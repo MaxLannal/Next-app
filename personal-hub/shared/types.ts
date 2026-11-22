@@ -64,3 +64,34 @@ export type Resource = {
   done: boolean;
   createdAt: string;
 };
+
+// --- Task 6 ---
+
+/** A stored file. `url` serves the original; `previewUrl` is set once a HEIC/HEIF preview exists. */
+export type Attachment = {
+  id: number;
+  sessionId: number | null;
+  parentId: number | null;
+  kind: AttachmentKind;
+  filename: string;
+  mime: string;
+  size: number;
+  createdAt: string;
+  source: 'upload' | 'github';
+  extractedText: string;
+  visionStatus: 'pending' | 'done' | 'failed' | null;
+  repoPath: string | null;
+  repoState: 'pending' | 'synced' | 'failed' | 'removed' | null;
+  url: string;
+  previewUrl: string | null;
+};
+
+export type SearchKind = 'session' | 'essay' | 'attachment';
+
+/** One full-text match. `snippet` is plain text around the match. */
+export type SearchHit = {
+  kind: SearchKind;
+  refId: number;
+  title: string;
+  snippet: string;
+};

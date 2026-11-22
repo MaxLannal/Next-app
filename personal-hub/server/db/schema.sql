@@ -60,8 +60,10 @@ CREATE TABLE session_tags (
   PRIMARY KEY (session_id, tag_id)
 );
 
+-- AUTOINCREMENT: an id is never reused, so a background job queued for a deleted
+-- attachment can't land on a later one.
 CREATE TABLE attachments (
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id INTEGER REFERENCES focus_sessions(id) ON DELETE SET NULL,
   parent_id INTEGER REFERENCES attachments(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'code', 'text', 'latex', 'other')),

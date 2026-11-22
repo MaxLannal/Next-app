@@ -73,3 +73,19 @@ it('turns on WAL and foreign keys', () => {
     db.close();
   }
 });
+
+it('never reuses an attachment id', () => {
+  const db = openDb(join(dir, 'hub.db'));
+  try {
+    const insert = db.prepare(
+      `INSERT INTO attachments (kind, filename, mime, size, path, sha256, created_at)
+       VALUES ('other', 'a', 'application/octet-stream', 0, 'p', 's', '2026-11-22T18:00:00.000Z')`,
+    );
+    const first = Number(insert.run().lastInsertRowid);
+    db.prepare('DELETE FROM attachments WHERE id = ?').run(first);
+    const second = Number(insert.run().lastInsertRowid);
+    expect(second).toBeGreaterThan(first);
+  } finally {
+    db.close();
+  }
+});
