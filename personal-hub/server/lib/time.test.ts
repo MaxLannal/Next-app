@@ -42,6 +42,15 @@ describe('focus time', () => {
     expect(focusSeconds(events, new Date('2026-11-22T18:00:00Z'))).toBe(1200);
   });
 
+  it('stop is final', () => {
+    const events = [
+      ev('start', '2026-11-22T15:00:00Z'),
+      ev('stop', '2026-11-22T16:00:00Z'),
+      ev('resume', '2026-11-22T16:30:00Z'),
+    ];
+    expect(focusSeconds(events, new Date('2026-11-22T18:00:00Z'))).toBe(3600);
+  });
+
   it('orders events by time before pairing them', () => {
     const events = [
       ev('stop', '2026-11-22T16:10:00Z'),

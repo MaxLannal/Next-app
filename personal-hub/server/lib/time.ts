@@ -8,7 +8,10 @@ export type Interval = { start: Date; end: Date };
 
 export type Range = 'day' | 'week' | 'month' | 'year';
 
-/** Focus intervals: each opens on start/resume and closes on pause/stop. An open one ends at `now`. */
+/**
+ * Focus intervals: each opens on start/resume and closes on pause/stop. An open one ends at `now`.
+ * Stop is final: events after the first stop are ignored.
+ */
 export function focusIntervals(events: SessionEvent[], now: Date): Interval[] {
   const sorted = events
     .map((e) => ({ type: e.type, at: new Date(e.at) }))
@@ -22,6 +25,7 @@ export function focusIntervals(events: SessionEvent[], now: Date): Interval[] {
       if (e.at > open) out.push({ start: open, end: e.at });
       open = null;
     }
+    if (e.type === 'stop') break;
   }
   if (open && now > open) out.push({ start: open, end: now });
   return out;
