@@ -36,16 +36,51 @@ export function focusSeconds(events: SessionEvent[], now: Date): number {
   return Math.round(ms / 1000);
 }
 
-/** The local day an instant falls on. */
+const HOUR_MS = 3_600_000;
+const knownZones = new Set<string>();
+
+/** Throws a RangeError unless Intl knows `tz`. Each zone is checked once. */
+export function assertTimeZone(tz: string): void {
+  if (knownZones.has(tz)) return;
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+  } catch {
+    throw new RangeError(`Unknown time zone: ${tz}`);
+  }
+  knownZones.add(tz);
+}
+
+/** The local day an instant falls on. Independent of the process time zone. */
 export function dayKey(d: Date, tz: string): string {
+  assertTimeZone(tz);
+  // Built from a timestamp, TZDate reads the wall clock through Intl and UTC getters only.
   const local = new TZDate(d.getTime(), tz);
   return formatDay(local.getFullYear(), local.getMonth() + 1, local.getDate());
 }
 
-/** The instant a local day begins (local midnight, or the first instant after it if a DST jump skips it). */
+/**
+ * The first instant of a local day: local midnight, the first instant after it if a DST jump
+ * skips it, or the first of the two if a fall-back repeats it. Independent of the process time zone.
+ */
 export function dayStart(day: string, tz: string): Date {
+  assertTimeZone(tz);
   const { y, m, d } = parseDay(day);
-  return new Date(new TZDate(y, m - 1, d, tz).getTime());
+  // Built from fields, TZDate goes through the process zone's Date setters, so near a DST change
+  // it can be an hour off or pick the second of two midnights. Keep it only if dayKey agrees.
+  const guess = new TZDate(y, m - 1, d, tz).getTime();
+  const keyAt = (t: number) => dayKey(new Date(t), tz);
+  if (keyAt(guess) === day && keyAt(guess - 1) !== day) return new Date(guess);
+  // Otherwise binary-search the first millisecond whose day is `day` or later
+  // (day keys compare chronologically as strings).
+  let lo = guess - 3 * HOUR_MS;
+  let hi = guess + 3 * HOUR_MS;
+  if (keyAt(lo) >= day || keyAt(hi) < day) throw new Error(`dayStart could not find the start of ${day} in ${tz}`);
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (keyAt(mid) >= day) hi = mid;
+    else lo = mid;
+  }
+  return new Date(hi);
 }
 
 /** Calendar arithmetic on day keys; no time zone is involved. */
@@ -62,6 +97,7 @@ export function splitByDay(intervals: Interval[], tz: string): Map<string, numbe
     while (cursor < end) {
       const day = dayKey(cursor, tz);
       const next = dayStart(addDays(day, 1), tz);
+      if (next <= cursor) throw new Error(`splitByDay made no progress at ${cursor.toISOString()} in ${tz}`);
       const segmentEnd = next < end ? next : end;
       ms.set(day, (ms.get(day) ?? 0) + (segmentEnd.getTime() - cursor.getTime()));
       cursor = segmentEnd;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionEvent } from '../../shared/types.ts';
 import {
   addDays,
+  assertTimeZone,
   clip,
   dayKey,
   dayStart,
@@ -16,6 +17,18 @@ import {
 const TZ = 'America/Chicago';
 const ev = (type: SessionEvent['type'], at: string): SessionEvent => ({ type, at });
 const interval = (start: string, end: string) => ({ start: new Date(start), end: new Date(end) });
+
+/** Runs `fn` with the process time zone set to `tz`. Node applies a changed TZ immediately. */
+function withProcessTZ(tz: string, fn: () => void) {
+  const saved = process.env.TZ;
+  process.env.TZ = tz;
+  try {
+    fn();
+  } finally {
+    if (saved === undefined) delete process.env.TZ;
+    else process.env.TZ = saved;
+  }
+}
 
 describe('focus time', () => {
   it('pauses are excluded', () => {
@@ -89,6 +102,52 @@ describe('days', () => {
   it('rejects a malformed day key', () => {
     expect(() => dayStart('2026-11-31', TZ)).toThrow(RangeError);
     expect(() => addDays('22/11/2026', 1)).toThrow(RangeError);
+  });
+
+  it('a whole DST fall-back day is 25 hours', () => {
+    const split = splitByDay([{ start: dayStart('2026-11-01', TZ), end: dayStart('2026-11-02', TZ) }], TZ);
+    expect(Object.fromEntries(split)).toEqual({ '2026-11-01': 90000 });
+  });
+
+  it('rejects an unknown time zone', () => {
+    expect(() => assertTimeZone('Not/AZone')).toThrow(RangeError);
+    expect(() => dayKey(new Date('2026-11-22T18:00:00Z'), 'Not/AZone')).toThrow(RangeError);
+    expect(() => dayStart('2026-11-22', 'Not/AZone')).toThrow(RangeError);
+    expect(() => assertTimeZone(TZ)).not.toThrow();
+  });
+});
+
+describe('days do not depend on the process time zone', () => {
+  it('London spring-forward while the process runs in America/Godthab', () => {
+    withProcessTZ('America/Godthab', () => {
+      // London 2024-03-31: 00:00 GMT is 00:00Z; clocks jump 01:00 GMT → 02:00 BST.
+      expect(dayStart('2024-03-31', 'Europe/London').toISOString()).toBe('2024-03-31T00:00:00.000Z');
+      const split = splitByDay([interval('2024-03-30T22:00:00Z', '2024-03-31T02:00:00Z')], 'Europe/London');
+      expect(Object.fromEntries(split)).toEqual({ '2024-03-30': 7200, '2024-03-31': 7200 });
+    });
+  });
+
+  it('Santiago fall-back at midnight while the process runs in Australia/Sydney', () => {
+    withProcessTZ('Australia/Sydney', () => {
+      // Santiago 2024-04-07: at 03:00Z clocks fall back 24:00 (-03) → 23:00 (-04), so 6 April
+      // runs 23:00–24:00 twice and 7 April begins at 00:00 -04 = 04:00Z.
+      //   02:00Z–03:00Z  6 Apr 23:00–24:00 (-03)  3600 s
+      //   03:00Z–04:00Z  6 Apr 23:00–24:00 (-04)  3600 s  → 6 Apr 7200
+      //   04:00Z–06:00Z  7 Apr 00:00–02:00 (-04)  7200 s  → 7 Apr 7200
+      expect(dayStart('2024-04-07', 'America/Santiago').toISOString()).toBe('2024-04-07T04:00:00.000Z');
+      const split = splitByDay([interval('2024-04-07T02:00:00Z', '2024-04-07T06:00:00Z')], 'America/Santiago');
+      expect(Object.fromEntries(split)).toEqual({ '2024-04-06': 7200, '2024-04-07': 7200 });
+    });
+  });
+
+  it('a repeated midnight starts the day at the first one', () => {
+    withProcessTZ('America/Chicago', () => {
+      // Checked with Intl: Azores falls back 01:00 (+00) → 00:00 (-01) on 2026-10-25, so local
+      // midnight is both 00:00Z and 01:00Z. Havana falls back 01:00 (-04) → 00:00 (-05) on
+      // 2026-11-01, so local midnight is both 04:00Z and 05:00Z.
+      expect(dayStart('2026-10-25', 'Atlantic/Azores').toISOString()).toBe('2026-10-25T00:00:00.000Z');
+      expect(dayStart('2026-11-01', 'America/Havana').toISOString()).toBe('2026-11-01T04:00:00.000Z');
+    });
   });
 });
 
