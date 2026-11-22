@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Panel } from '../../components/ui/Panel.tsx';
+import { ResourcesPanel } from './resources/ResourcesPanel.tsx';
 
 /** Grid areas below the hero. Each later task puts its panel into its slot. */
 type SlotId = 'goals' | 'focus' | 'heatmap' | 'sleep' | 'exercise' | 'calendar' | 'resources' | 'media';
@@ -45,7 +46,7 @@ export function Dashboard() {
             <Panel title="Calendar" />
           </Slot>
           <Slot id="resources">
-            <Panel title="Resources" />
+            <ResourcesPanel />
           </Slot>
           <Slot id="media">
             <Panel title="Now playing" />

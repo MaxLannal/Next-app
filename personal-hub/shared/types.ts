@@ -32,3 +32,20 @@ export type GitStatus = {
   lastError: string | null;
   pending: number;
 };
+
+// --- Task 13 ---
+
+export type ResourceKind = 'pdf' | 'video' | 'course' | 'link';
+
+export type Resource = {
+  id: number;
+  url: string;
+  title: string;
+  kind: ResourceKind;
+  /** The host without a leading `www.`, e.g. "coursera.org". */
+  domain: string;
+  thumbnail: string | null;
+  note: string;
+  done: boolean;
+  createdAt: string;
+};
