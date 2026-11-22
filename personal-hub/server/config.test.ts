@@ -47,6 +47,26 @@ it('updates merge deeply and persist', () => {
   expect(mode(file)).toBe(0o600);
 });
 
+it('replaces empty, null or malformed secrets', () => {
+  for (const bad of [{ sessionSecret: '', hubToken: null }, { sessionSecret: 42, hubToken: 'short' }]) {
+    writeFileSync(file, JSON.stringify(bad));
+
+    const cfg = createConfigStore(file).get();
+
+    expect(cfg.sessionSecret).toMatch(/^[0-9a-f]{64}$/);
+    expect(cfg.hubToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.parse(readFileSync(file, 'utf8')).sessionSecret).toBe(cfg.sessionSecret);
+  }
+});
+
+it('an update cannot blank a secret', () => {
+  const store = createConfigStore(file);
+  const cfg = store.update({ sessionSecret: '', hubToken: '' });
+
+  expect(cfg.sessionSecret).toMatch(/^[0-9a-f]{64}$/);
+  expect(cfg.hubToken).toMatch(/^[0-9a-f]{64}$/);
+});
+
 it('fills in what an existing file is missing', () => {
   writeFileSync(file, JSON.stringify({ port: 5000, github: { repo: 'max/notes' } }), { mode: 0o644 });
 

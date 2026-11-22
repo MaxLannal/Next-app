@@ -37,6 +37,7 @@ export type TestContext = AppContext & {
 /**
  * A full AppContext on a fresh temp data dir, with a fixed clock (TEST_NOW),
  * the America/Chicago time zone, and fake Claude, Mac and git services.
+ * `req` sends from 127.0.0.1 with `Host: localhost:4747` unless `init` says otherwise.
  */
 export function makeTestContext(over: Partial<AppContext> = {}): TestContext {
   const dataDir = mkdtempSync(join(tmpdir(), 'hub-test-'));
@@ -72,6 +73,7 @@ export function makeTestContext(over: Partial<AppContext> = {}): TestContext {
     req(method: string, path: string, body?: unknown, init: { remote?: string; headers?: Record<string, string> } = {}) {
       const headers = new Headers(init.headers);
       headers.set(REMOTE_HEADER, init.remote ?? '127.0.0.1');
+      if (!headers.has('host')) headers.set('host', 'localhost:4747');
       let payload: RequestInit['body'];
       if (typeof body === 'string' || body instanceof FormData || body instanceof Uint8Array || body instanceof Blob) {
         payload = body;

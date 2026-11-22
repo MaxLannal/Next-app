@@ -21,6 +21,16 @@ export type ConfigStore = {
 };
 
 const randomSecret = () => randomBytes(32).toString('hex');
+const isSecret = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
+
+/** The session secret and hub token are always 32 random bytes as hex; anything else is replaced. */
+function withSecrets(cfg: HubConfig): HubConfig {
+  return {
+    ...cfg,
+    sessionSecret: isSecret(cfg.sessionSecret) ? cfg.sessionSecret : randomSecret(),
+    hubToken: isSecret(cfg.hubToken) ? cfg.hubToken : randomSecret(),
+  };
+}
 
 function defaults(): HubConfig {
   return {
@@ -42,14 +52,14 @@ function defaults(): HubConfig {
  */
 export function createConfigStore(file: string): ConfigStore {
   const raw = existsSync(file) ? readFileSync(file, 'utf8') : null;
-  let current = merge(defaults(), raw === null ? {} : parse(file, raw));
+  let current = withSecrets(merge(defaults(), raw === null ? {} : parse(file, raw)));
   if (serialize(current) !== raw) save(file, current);
   else chmodSync(file, 0o600);
 
   return {
     get: () => current,
     update(patch) {
-      current = merge(current, patch);
+      current = withSecrets(merge(current, patch));
       save(file, current);
       return current;
     },
