@@ -2,3 +2,4 @@ node_modules
 web/dist
 mac/bin
 test-results
+dist/
