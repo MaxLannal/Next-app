@@ -142,11 +142,11 @@ export function createAttachment(ctx: AppContext, input: CreateAttachmentInput):
   const folder = `files/${format(new TZDate(now, ctx.timeZone()), 'yyyy/MM')}`;
 
   const tmp = join(ctx.paths.tmpDir, `upload-${randomUUID()}`);
-  writeFileSync(tmp, input.bytes);
   let placed: string | null = null;
-  let id: number;
+  let stored: { id: number; path: string };
   try {
-    id = transaction(ctx.db, () => {
+    writeFileSync(tmp, input.bytes);
+    stored = transaction(ctx.db, () => {
       const inserted = ctx.db
         .prepare(
           `INSERT INTO attachments (session_id, parent_id, kind, filename, mime, size, path, sha256, source,
@@ -176,15 +176,16 @@ export function createAttachment(ctx: AppContext, input: CreateAttachmentInput):
       mkdirSync(dirname(dest), { recursive: true });
       renameSync(tmp, dest);
       placed = dest;
-      return newId;
+      return { id: newId, path };
     });
   } catch (err) {
     rmSync(placed ?? tmp, { force: true });
     throw err;
   }
 
+  const { id, path } = stored;
   if (mime === 'image/heic' || mime === 'image/heif') {
-    ctx.jobs.enqueue('heic-preview', () => makePreview(ctx, id));
+    ctx.jobs.enqueue('heic-preview', () => makePreview(ctx, id, path));
   }
 
   const created = getAttachment(ctx, id)!;
@@ -199,21 +200,28 @@ export function createAttachment(ctx: AppContext, input: CreateAttachmentInput):
   return getAttachment(ctx, id) ?? created;
 }
 
-/** Converts a HEIC/HEIF original to `<same>.preview.jpg`. A failed conversion leaves no preview. */
-async function makePreview(ctx: AppContext, id: number): Promise<void> {
-  const row = getRow(ctx.db, id);
-  if (!row) return; // deleted before the job ran
-  const previewPath = `${row.path.replace(/\.[^./]*$/, '')}.preview.jpg`;
+// The row a preview job was queued for, still holding the same HEIC/HEIF file.
+const SAME_HEIC_ROW = `id = ? AND path = ? AND mime IN ('image/heic', 'image/heif')`;
+
+/**
+ * Converts the HEIC/HEIF original at `path` to `<same>.preview.jpg`. Does nothing
+ * if the row no longer holds that file. A failed conversion leaves no preview.
+ */
+async function makePreview(ctx: AppContext, id: number, path: string): Promise<void> {
+  if (ctx.db.prepare(`SELECT 1 FROM attachments WHERE ${SAME_HEIC_ROW}`).get(id, path) === undefined) return;
+  const previewPath = `${path.replace(/\.[^./]*$/, '')}.preview.jpg`;
   const dest = join(ctx.paths.dataDir, previewPath);
   try {
-    await ctx.mac.convertImage(join(ctx.paths.dataDir, row.path), dest, PREVIEW_MAX_PIXELS);
+    await ctx.mac.convertImage(join(ctx.paths.dataDir, path), dest, PREVIEW_MAX_PIXELS);
   } catch (err) {
     rmSync(dest, { force: true });
     if (err instanceof UnavailableError) return; // the Mac helpers aren't set up: no preview
     throw err; // the job queue logs it
   }
-  const { changes } = ctx.db.prepare('UPDATE attachments SET preview_path = ? WHERE id = ?').run(previewPath, id);
-  if (Number(changes) === 0) rmSync(dest, { force: true }); // deleted while converting
+  const { changes } = ctx.db
+    .prepare(`UPDATE attachments SET preview_path = ? WHERE ${SAME_HEIC_ROW}`)
+    .run(previewPath, id, path);
+  if (Number(changes) === 0) rmSync(dest, { force: true }); // deleted or replaced while converting
 }
 
 /** Changes the text (and re-indexes it) or the session. Derived files move with their parent. */

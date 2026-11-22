@@ -38,6 +38,8 @@ function sendFile(c: Context, path: string, filename: string, mime: string): Res
   c.header('Content-Length', String(size));
   c.header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeFilename(filename)}`);
   c.header('X-Content-Type-Options', 'nosniff');
+  // Another site can't embed it either (loopback requests need no login).
+  c.header('Cross-Origin-Resource-Policy', 'same-origin');
   return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
 }
 

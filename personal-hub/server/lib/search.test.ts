@@ -21,7 +21,27 @@ it('finds by prefix', () => {
 
 it('search tolerates FTS syntax', () => {
   indexDoc(t.db, 'attachment', 1, 'hw.py', 'C++ draft (final) AND notes');
-  const nasty = ['C++', '"', '-draft', '*', '(', 'AND', 'NEAR(', 'title:hw', '^x', "'", '\\', '""', 'a OR', ')', '{x}', '🙂'];
+  const nasty = [
+    'C++',
+    '"',
+    '-draft',
+    '*',
+    '(',
+    'AND',
+    'NEAR(',
+    'title:hw',
+    '^x',
+    "'",
+    '\\',
+    '""',
+    'a OR',
+    ')',
+    '{x}',
+    '🙂',
+    '\u0000',
+    'a\u0000b',
+    'draft\u0007\u001b',
+  ];
   for (const q of nasty) {
     const hits = search(t.db, q);
     expect(Array.isArray(hits), q).toBe(true);
@@ -29,6 +49,9 @@ it('search tolerates FTS syntax', () => {
   // Operators and punctuation are plain words, not syntax.
   expect(search(t.db, 'AND')).toHaveLength(1);
   expect(search(t.db, '-draft')).toHaveLength(1);
+  // Control characters separate words.
+  expect(search(t.db, 'draft\u0000notes')).toHaveLength(1);
+  expect(search(t.db, '\u0000')).toEqual([]);
 });
 
 it('matches every token', () => {
@@ -81,6 +104,10 @@ it('serves hits over HTTP', async () => {
   const odd = await t.req('GET', `/api/search?q=${encodeURIComponent('C++ "(')}`);
   expect(odd.status).toBe(200);
   expect(Array.isArray(await odd.json())).toBe(true);
+
+  const nul = await t.req('GET', '/api/search?q=a%00b');
+  expect(nul.status).toBe(200);
+  expect(Array.isArray(await nul.json())).toBe(true);
 
   const none = await t.req('GET', '/api/search');
   expect(await none.json()).toEqual([]);

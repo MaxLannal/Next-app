@@ -20,10 +20,12 @@ export function removeDoc(db: DatabaseSync, kind: SearchKind, refId: number): vo
 /**
  * Every whitespace-separated token must match as a word prefix. Each token is
  * quoted, so FTS5 operators and punctuation (`C++`, `"`, `-draft`, `AND`) are
- * plain text and can never be a syntax error. Title matches rank above body matches.
+ * plain text and can never be a syntax error. Control characters become spaces:
+ * FTS5 ends a quoted string at NUL. Title matches rank above body matches.
  */
 export function search(db: DatabaseSync, q: string, limit = 30): SearchHit[] {
   const terms = q
+    .replace(/\p{Cc}/gu, ' ')
     .split(/\s+/)
     .filter((token) => token !== '')
     .map((token) => `"${token.replaceAll('"', '""')}"*`);

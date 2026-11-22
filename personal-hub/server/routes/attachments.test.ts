@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Attachment } from '../../shared/types.ts';
@@ -160,10 +160,12 @@ describe('serving', () => {
     expect(py.headers.get('content-type')).toMatch(/^text\/x-python/);
     expect(py.headers.get('content-disposition')).toBe("inline; filename*=UTF-8''hw.py");
     expect(py.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(py.headers.get('cross-origin-resource-policy')).toBe('same-origin');
     expect(await py.text()).toBe('print(1)\n');
 
     const png = await t.req('GET', photo.url);
     expect(png.headers.get('content-type')).toBe('image/png');
+    expect(png.headers.get('cross-origin-resource-policy')).toBe('same-origin');
     expect(png.headers.get('content-length')).toBe('14');
     expect(await png.text()).toBe('fake png bytes');
   });
@@ -218,7 +220,29 @@ describe('HEIC previews', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/jpeg');
     expect(res.headers.get('content-disposition')).toBe("inline; filename*=UTF-8''IMG_0001.jpg");
+    expect(res.headers.get('cross-origin-resource-policy')).toBe('same-origin');
     expect(await res.text()).toBe('heic bytes');
+  });
+
+  it('a preview never lands on a later upload', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    t.fakes.mac.convertImage = async (_src, dest) => {
+      await gate;
+      writeFileSync(dest, 'jpeg');
+    };
+
+    const [heic] = await uploadOk([['IMG_0001.HEIC', 'heic bytes']]);
+    expect((await t.req('DELETE', `/api/attachments/${heic.id}`)).status).toBe(204);
+    const [jpg] = await uploadOk([['photo.jpg', 'jpg bytes']]);
+    release();
+    await t.jobs.drain();
+
+    expect(jpg.id).not.toBe(heic.id);
+    expect((await getAttachment(jpg.id)).previewUrl).toBeNull();
+    expect(readdirSync(monthDir())).toEqual([`${jpg.id}-photo.jpg`]);
   });
 
   it('other images get no preview', async () => {
