@@ -1,0 +1,4 @@
+/* Fixed-width digit cells for running figures (the hero clock, the timer pill):
+   the hub's faces have no tabular figures, so each digit gets its own cell. */
+.fixed-digits { white-space: nowrap; }
+.fixed-digits__d { display: inline-block; width: 0.62em; text-align: center; }

@@ -4,7 +4,8 @@ import type { CalendarEvent } from '@shared/types.ts';
 import { EmptyState } from '../../../components/ui/EmptyState.tsx';
 import { formatTime } from '../../../lib/format.ts';
 import { useNow } from '../time/useNow.ts';
-import { calendarProblem, eventsOn, timeLabel, useCalendar } from './useCalendar.ts';
+import { CalendarProblem } from './CalendarProblem.tsx';
+import { eventsOn, FALLBACK_NOTE, timeLabel, useCalendar } from './useCalendar.ts';
 import './TodayAgenda.css';
 
 /**
@@ -25,20 +26,7 @@ export function TodayAgenda() {
 
   let body;
   if (error) {
-    const problem = calendarProblem(error);
-    body = (
-      <EmptyState
-        title={problem.title}
-        line={problem.line}
-        action={
-          problem.canRetry ? (
-            <button className="btn btn-ghost btn-sm" type="button" onClick={() => void refetch()}>
-              Retry
-            </button>
-          ) : undefined
-        }
-      />
-    );
+    body = <CalendarProblem error={error} onRetry={() => void refetch()} />;
   } else if (isPending) {
     body = <p className="agenda__wait">Reading your calendar</p>;
   } else if (events.length === 0) {
@@ -69,6 +57,7 @@ export function TodayAgenda() {
         {events.length > 0 && <p className="agenda__meta num">{summary(events.length, current, onNow, timed.length)}</p>}
       </header>
       {body}
+      {!error && data?.source === 'calendar-app' && <p className="agenda__note">{FALLBACK_NOTE}</p>}
     </section>
   );
 }

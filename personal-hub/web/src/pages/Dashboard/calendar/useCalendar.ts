@@ -1,27 +1,24 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { addDays, startOfDay } from 'date-fns';
-import type { CalendarEvent, CalendarResponse, ServiceFix } from '@shared/types.ts';
-import { api, ApiError } from '../../../api.ts';
+import type { CalendarEvent, CalendarResponse } from '@shared/types.ts';
+import { api } from '../../../api.ts';
 import { formatTime } from '../../../lib/format.ts';
 
-/** The events from `from` to `to` (local days), read again whenever the window regains focus. */
+/** Shown under a panel whose events came from the Calendar app fallback, which doesn't expand repeating events. */
+export const FALLBACK_NOTE = 'From the Calendar app — repeating events may be missing';
+
+/**
+ * The events from `from` to `to` (local days), read again whenever the window
+ * regains focus. A new range keeps showing the last one's events until it arrives.
+ */
 export function useCalendar(from: Date, to: Date) {
   const range = { from: from.toISOString(), to: to.toISOString() };
   return useQuery({
     queryKey: ['calendar', range.from, range.to],
     queryFn: ({ signal }) => api<CalendarResponse>(`/api/calendar?${new URLSearchParams(range)}`, { signal }),
+    placeholderData: keepPreviousData,
     refetchOnWindowFocus: true,
   });
-}
-
-/** What a failed read should say: the hub's own error and fix on a 503, else a retry line. */
-export function calendarProblem(error: unknown): { title: string; line: string; canRetry: boolean } {
-  if (error instanceof ApiError && error.status === 503) {
-    const body = error.body as Partial<ServiceFix> | null;
-    if (typeof body?.fix === 'string') return { title: error.message, line: body.fix, canRetry: false };
-  }
-  const message = error instanceof Error ? error.message : 'Something went wrong';
-  return { title: 'Couldn’t read the calendar', line: message, canRetry: true };
 }
 
 /** The events that touch a local day: all-day ones first, then by start. */

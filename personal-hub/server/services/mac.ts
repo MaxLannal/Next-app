@@ -49,13 +49,32 @@ const CALENDAR_JXA = fileURLToPath(new URL('./calendar-jxa.js', import.meta.url)
 /** The helper's code when macOS hasn't granted it calendar access. */
 const HELPER_DENIED = 2;
 
+/** Where the bridge says why a Mac service failed. Never given program output, which may hold event details. */
+export type MacLog = (message: string) => void;
+
+/** Why a calendar read failed, from its code and stderr only: `exit 2 (not authorized)`, `exit 0 (unreadable output)`. */
+function failure(out: { code: number; stderr: string }): string {
+  if (out.code === 0) return 'exit 0 (unreadable output)';
+  const meaning =
+    out.code === HELPER_DENIED ? ' (not authorized)'
+    : out.code === NOT_FOUND ? ' (not found)'
+    : out.code === TIMED_OUT ? ' (timed out)'
+    : '';
+  const stderr = out.stderr.trim().slice(0, 500);
+  return `exit ${out.code}${meaning}${stderr ? `: ${stderr}` : ''}`;
+}
+
 /**
  * The hub's reach into macOS: Calendar through the calendar-helper (EventKit),
  * with the Calendar app over osascript as the fallback; images through `sips`;
  * staying awake through `caffeinate`. `paths` is the data folder, which none of
- * these need yet.
+ * these need yet. `log` hears why a calendar read fell back or failed.
  */
-export function createMacBridge(paths: HubPaths, run: Run = execFileRun): MacBridge {
+export function createMacBridge(
+  paths: HubPaths,
+  run: Run = execFileRun,
+  log: MacLog = (message) => console.error(message),
+): MacBridge {
   let caffeinate: ChildProcess | null = null;
 
   return {
@@ -69,11 +88,13 @@ export function createMacBridge(paths: HubPaths, run: Run = execFileRun): MacBri
 
       // Denied (macOS refuses the helper, e.g. when the hub runs under launchd),
       // not built yet, or broken: ask the Calendar app instead. It is slower and
-      // lists only the first occurrence of a repeating event.
+      // misses repeating events whose series began before the range.
+      log(`Calendar helper failed, ${failure(helper)}; reading the Calendar app instead`);
       const jxa = await run('osascript', ['-l', 'JavaScript', CALENDAR_JXA, fromIso, toIso], { timeoutMs: 45_000 });
       const fromApp = jxa.code === 0 ? parseEvents(jxa.stdout) : null;
       if (fromApp) return { events: fromApp, source: 'calendar-app' };
 
+      log(`Calendar app read failed, ${failure(jxa)}`);
       throw new UnavailableError('Calendar access not granted');
     },
 

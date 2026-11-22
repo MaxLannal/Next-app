@@ -13,13 +13,13 @@ import {
 } from 'date-fns';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { CalendarEvent } from '@shared/types.ts';
-import { EmptyState } from '../../../components/ui/EmptyState.tsx';
 import { Panel } from '../../../components/ui/Panel.tsx';
 import { Tabs } from '../../../components/ui/Tabs.tsx';
 import { formatShortDate } from '../../../lib/format.ts';
 import { useNow } from '../time/useNow.ts';
+import { CalendarProblem } from './CalendarProblem.tsx';
 import { EventDetails } from './EventDetails.tsx';
-import { calendarProblem, eventsOn, timeLabel, useCalendar } from './useCalendar.ts';
+import { eventsOn, FALLBACK_NOTE, timeLabel, useCalendar } from './useCalendar.ts';
 import './CalendarPanel.css';
 
 type View = 'month' | 'week';
@@ -51,20 +51,7 @@ export function CalendarPanel() {
   const showsToday = days.some((d) => isSameDay(d, today));
 
   const waiting = <p className="cal__none">Reading your calendar</p>;
-  const problem = error ? calendarProblem(error) : null;
-  const problemState = problem && (
-    <EmptyState
-      title={problem.title}
-      line={problem.line}
-      action={
-        problem.canRetry ? (
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => void refetch()}>
-            Retry
-          </button>
-        ) : undefined
-      }
-    />
-  );
+  const problemState = error ? <CalendarProblem error={error} onRetry={() => void refetch()} /> : null;
 
   return (
     <Panel
@@ -98,6 +85,7 @@ export function CalendarPanel() {
         (problemState ?? (isPending ? waiting : <WeekList days={days} today={today} events={events} onOpen={setOpen} />))
       )}
 
+      {!error && data?.source === 'calendar-app' && <p className="cal__note">{FALLBACK_NOTE}</p>}
       <EventDetails event={open} onClose={() => setOpen(null)} />
     </Panel>
   );

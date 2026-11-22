@@ -1,4 +1,5 @@
 import { differenceInCalendarDays, format, getISOWeek, lastDayOfYear } from 'date-fns';
+import { FixedDigits } from '../../../components/ui/FixedDigits.tsx';
 import { useNow } from './useNow.ts';
 import './TimePanel.css';
 
@@ -14,7 +15,9 @@ export function TimePanel() {
     <div className="time">
       <h1 className="time__date">{format(now, 'EEEE, d MMMM')}</h1>
       <p className="time__clock num" aria-live="off">
-        <time dateTime={now.toISOString()}>{format(now, 'HH:mm:ss')}</time>
+        <time dateTime={now.toISOString()}>
+          <FixedDigits text={format(now, 'HH:mm:ss')} />
+        </time>
       </p>
       <p className="time__year num">
         {`Week ${getISOWeek(now)} · ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left in ${now.getFullYear()}`}

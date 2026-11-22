@@ -101,6 +101,18 @@ describe('TodayAgenda', () => {
   });
 });
 
+it('says when events come from the Calendar app', async () => {
+  serve(() => json({ events: [office], source: 'calendar-app' }));
+  renderWithQuery(
+    <>
+      <TodayAgenda />
+      <CalendarPanel />
+    </>,
+  );
+
+  await waitFor(() => expect(screen.getAllByText('From the Calendar app — repeating events may be missing')).toHaveLength(2));
+});
+
 describe('CalendarPanel', () => {
   it('lists the selected day and opens an event', async () => {
     const user = userEvent.setup();

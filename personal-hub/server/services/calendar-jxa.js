@@ -4,8 +4,10 @@
 //   osascript -l JavaScript calendar-jxa.js <fromISO> <toISO>
 //
 // Prints the same CalendarEvent[] JSON as `calendar-helper events`, read from the
-// Calendar app over Apple Events. The Calendar app only returns the first
-// occurrence of a repeating event here; EventKit expands every occurrence.
+// Calendar app over Apple Events. Repeating events are not expanded: the Calendar
+// app gives a series the dates of its first occurrence, so the date filter below
+// misses any series that began before the range, and shows a series that began
+// inside it only once. EventKit (the helper) expands every occurrence.
 
 function run(argv) {
   const from = new Date(argv[0]);
@@ -14,42 +16,50 @@ function run(argv) {
     throw new Error('usage: calendar-jxa.js <fromISO> <toISO>');
   }
 
+  // Without permission to control Calendar this throws, and the whole read fails.
   const Calendar = Application('Calendar');
   const out = [];
   for (const calendar of Calendar.calendars()) {
-    const found = calendar.events.whose({ _and: [{ startDate: { _lessThan: to } }, { endDate: { _greaterThan: from } }] });
-    const ids = found.uid();
-    if (ids.length === 0) continue;
-
-    // One Apple Event per property for the whole calendar, not one per event.
-    const titles = found.summary();
-    const starts = found.startDate();
-    const ends = found.endDate();
-    const allDay = found.alldayEvent();
-    const locations = found.location();
-    const notes = found.description();
-    const urls = found.url();
-    const name = calendar.name();
-    const color = hex(calendar.color());
-
-    for (let i = 0; i < ids.length; i++) {
-      out.push({
-        id: `${ids[i]}@${Math.floor(starts[i].getTime() / 1000)}`,
-        title: titles[i] || '',
-        start: starts[i].toISOString(),
-        end: ends[i].toISOString(),
-        allDay: allDay[i] === true,
-        calendar: name,
-        color,
-        location: locations[i] || null,
-        notes: notes[i] || null,
-        url: urls[i] || null,
-      });
+    // One unreadable calendar (a broken subscription, say) is skipped, not fatal.
+    try {
+      out.push(...readCalendar(calendar, from, to));
+    } catch (err) {
+      console.log(`Skipped a calendar: ${err}`); // stderr
     }
   }
 
   out.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
   return JSON.stringify(out);
+}
+
+function readCalendar(calendar, from, to) {
+  const found = calendar.events.whose({ _and: [{ startDate: { _lessThan: to } }, { endDate: { _greaterThan: from } }] });
+  const ids = found.uid();
+  if (ids.length === 0) return [];
+
+  // One Apple Event per property for the whole calendar, not one per event.
+  const titles = found.summary();
+  const starts = found.startDate();
+  const ends = found.endDate();
+  const allDay = found.alldayEvent();
+  const locations = found.location();
+  const notes = found.description();
+  const urls = found.url();
+  const name = calendar.name();
+  const color = hex(calendar.color());
+
+  return ids.map((uid, i) => ({
+    id: `${uid}@${Math.floor(starts[i].getTime() / 1000)}`,
+    title: titles[i] || '',
+    start: starts[i].toISOString(),
+    end: ends[i].toISOString(),
+    allDay: allDay[i] === true,
+    calendar: name,
+    color,
+    location: locations[i] || null,
+    notes: notes[i] || null,
+    url: urls[i] || null,
+  }));
 }
 
 /** The Calendar app's RGB colour (0–65535 per channel, or 0–1) as #rrggbb. */
