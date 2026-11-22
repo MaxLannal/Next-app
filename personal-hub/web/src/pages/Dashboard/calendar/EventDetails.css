@@ -1,0 +1,16 @@
+/* An event's details in the sheet: a ruled list, the label muted and a step
+   smaller, the value in ink (Hallmark's Dusk labels and rows). */
+
+.details { display: grid; margin: 0; }
+.details__row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: var(--space-md); padding: 12px 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); }
+.details__row dt { font-size: var(--text-sm); font-weight: 500; color: var(--color-muted); }
+.details__row dd { margin: 0; min-width: 0; font-size: 0.9375rem; }
+.details__calendar { display: flex; align-items: center; gap: var(--space-sm); }
+.details__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 0 3px color-mix(in oklab, var(--dot) 22%, transparent); }
+.details__link { overflow-wrap: anywhere; }
+.details__link a { color: var(--color-accent-hi); }
+.details__notes { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-ink-2); }
+
+@media (max-width: 40rem) {
+  .details__row { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); }
+}

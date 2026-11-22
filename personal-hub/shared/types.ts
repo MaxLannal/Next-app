@@ -32,3 +32,13 @@ export type GitStatus = {
   lastError: string | null;
   pending: number;
 };
+
+// --- Task 14 ---
+
+export type CalendarSource = 'eventkit' | 'calendar-app';
+
+/** `GET /api/calendar?from&to`. When the Mac refuses calendar access it answers 503 with `ServiceFix`. */
+export type CalendarResponse = { events: CalendarEvent[]; source: CalendarSource };
+
+/** A 503 body: what is wrong and the one step that fixes it. */
+export type ServiceFix = { error: string; fix: string };
