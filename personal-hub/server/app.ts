@@ -5,6 +5,7 @@ import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authMiddleware, authRoutes, isApiPath } from './auth.ts';
 import type { AppContext } from './context.ts';
+import { resourceRoutes } from './routes/resources.ts';
 
 const WEB_DIST = fileURLToPath(new URL('../web/dist', import.meta.url));
 
@@ -15,6 +16,7 @@ export function createApp(ctx: AppContext): Hono {
 
   app.get('/api/ping', (c) => c.json({ ok: true }));
   app.route('/api/auth', authRoutes(ctx));
+  app.route('/api/resources', resourceRoutes(ctx));
 
   app.use('*', webApp(WEB_DIST));
   return app;

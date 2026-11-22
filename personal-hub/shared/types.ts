@@ -47,3 +47,20 @@ export type HeatmapDay = {
   level: 0 | 1 | 2 | 3 | 4 | 5;
   subjects: SubjectSlice[];
 };
+
+// --- Task 13 ---
+
+export type ResourceKind = 'pdf' | 'video' | 'course' | 'link';
+
+export type Resource = {
+  id: number;
+  url: string;
+  title: string;
+  kind: ResourceKind;
+  /** The host without a leading `www.`, e.g. "coursera.org". */
+  domain: string;
+  thumbnail: string | null;
+  note: string;
+  done: boolean;
+  createdAt: string;
+};

@@ -1,0 +1,63 @@
+/* Resources: the paste field, a ruled kind filter, then the links as Dusk rows
+   (round mark, title over a muted domain, quiet controls at the end). */
+
+.resources__error { margin-top: var(--space-sm); padding-inline: var(--space-lg); font-size: var(--text-sm); color: var(--color-accent-2); }
+.resources__tabs { margin-top: var(--space-md); }
+
+/* The inline padding keeps focus rings clear of the scroll box's clip. */
+.res-list { list-style: none; margin: 0 -4px; padding: 0 4px 4px; max-height: 34rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.res { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: var(--space-md); padding: var(--space-sm) 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); }
+.res:first-child { border-top: 0; }
+
+.res__mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: color-mix(in oklab, var(--color-light) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 10%, transparent); color: var(--color-ink-2); }
+.res svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+.res__main { display: flex; flex-direction: column; min-width: 0; }
+.res__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 0.9375rem; font-weight: 500; line-height: 1.4; text-decoration: none; }
+a.res__title:hover { text-decoration: underline; }
+.res__sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-xs); color: var(--color-muted); }
+.res__note { color: var(--color-ink-2); }
+.res.is-done .res__title { color: var(--color-muted); }
+
+/* Quiet round controls; the check turns periwinkle when done. */
+.res__acts { display: flex; align-items: center; gap: var(--space-xs); }
+.res__btn, .res__check { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--color-muted); cursor: pointer; transition: background-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
+.res__btn:hover, .res__check:hover { background: color-mix(in oklab, var(--color-light) 7%, transparent); color: var(--color-ink); }
+.res__check svg { width: 20px; height: 20px; }
+.res__check path { opacity: 0; transition: opacity var(--dur-short) var(--ease-out); }
+.res__check:hover path { opacity: 0.6; }
+.res__check[aria-pressed="true"] circle { fill: var(--color-accent); stroke: var(--color-accent); }
+.res__check[aria-pressed="true"] path { opacity: 1; stroke: var(--color-accent-ink); stroke-width: 1.8; }
+.res__ask { font-size: var(--text-sm); color: var(--color-muted); }
+
+/* The row holding a link's place while its title is fetched. */
+.res.is-pending .res__title { color: var(--color-muted); font-weight: 400; }
+.res__pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-accent) 20%, transparent); animation: res-pulse 2.4s var(--ease-in-out) infinite; }
+@keyframes res-pulse { 50% { box-shadow: 0 0 0 7px color-mix(in oklab, var(--color-accent) 5%, transparent); } }
+
+/* Inline editing: fields sit on the glass at 4–6%, never a second glass. */
+.res.is-editing { align-items: start; }
+.res__edit { grid-column: 2 / -1; display: grid; gap: var(--space-sm); min-width: 0; }
+.res__field { width: 100%; min-height: 40px; padding: 0 var(--space-md); border: 0; border-radius: var(--radius-inner); background: color-mix(in oklab, var(--color-light) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 12%, transparent); color: var(--color-ink); font-size: 0.9375rem; font-weight: 500; }
+.res__field--note { font-size: var(--text-sm); font-weight: 400; }
+.res__field::placeholder { color: var(--color-muted); }
+.res__field:focus-visible { outline: none; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
+.res__edit-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm) var(--space-md); }
+.res__edit-acts { display: flex; gap: var(--space-sm); }
+
+/* Kind choice: words with a periwinkle dot on the chosen one, like the tabs. */
+.res__kinds { display: flex; flex-wrap: wrap; gap: 0 var(--space-md); }
+.res__kind { position: relative; padding: var(--space-xs) 0 var(--space-xs) var(--space-md); color: var(--color-muted); font: 500 var(--text-sm)/1.4 var(--font-display); cursor: pointer; transition: color var(--dur-short) var(--ease-out); }
+.res__kind::before { content: ""; position: absolute; left: 2px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: var(--color-accent); opacity: 0; transform: scale(0.4); transition: opacity var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out); }
+.res__kind:hover { color: var(--color-ink-2); }
+.res__kind:has(:checked) { color: var(--color-ink); }
+.res__kind:has(:checked)::before { opacity: 1; transform: none; box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-accent) 20%, transparent); }
+.res__kind:has(:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
+
+/* Phones: the title gets the full width and the controls sit under it. */
+@media (max-width: 40rem) {
+  .resources__tabs .tabs { gap: 0 12px; }
+  .res { grid-template-columns: 34px minmax(0, 1fr); gap: var(--space-xs) var(--space-md); }
+  .res__acts { grid-column: 2; margin-left: -10px; }
+  .res__btn, .res__check { width: 40px; height: 40px; }
+}
