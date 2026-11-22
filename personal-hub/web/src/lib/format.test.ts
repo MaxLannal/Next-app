@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatClock, formatDuration, formatShortDate, formatTime } from './format.ts';
+import { formatClock, formatDuration, formatShare, formatShortDate, formatTime } from './format.ts';
 
 describe('formatDuration', () => {
   it('shows minutes under an hour and hours with minutes above', () => {
@@ -9,6 +9,16 @@ describe('formatDuration', () => {
     expect(formatDuration(2700)).toBe('45 m');
     expect(formatDuration(5100)).toBe('1 h 25 m');
     expect(formatDuration(7200)).toBe('2 h 0 m');
+  });
+});
+
+describe('formatShare', () => {
+  it('rounds to a whole percentage and keeps slivers visible', () => {
+    expect(formatShare(0.75)).toBe('75%');
+    expect(formatShare(1 / 3)).toBe('33%');
+    expect(formatShare(0)).toBe('0%');
+    expect(formatShare(0.004)).toBe('<1%');
+    expect(formatShare(1)).toBe('100%');
   });
 });
 

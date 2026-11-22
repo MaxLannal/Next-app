@@ -32,3 +32,18 @@ export type GitStatus = {
   lastError: string | null;
   pending: number;
 };
+
+/** Focus time for one subject. `name` is `'No subject'` when `subjectId` is null. */
+export type SubjectSlice = {
+  subjectId: number | null;
+  name: string;
+  seconds: number;
+};
+
+/** One day of the year-of-focus heatmap. `level` 0 is no focus; 1–5 are the sage steps. */
+export type HeatmapDay = {
+  date: string;
+  seconds: number;
+  level: 0 | 1 | 2 | 3 | 4 | 5;
+  subjects: SubjectSlice[];
+};

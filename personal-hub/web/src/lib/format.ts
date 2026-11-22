@@ -17,6 +17,12 @@ export function formatDuration(s: number): string {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} m`;
 }
 
+/** A share of a whole as `"75%"`; a sliver shows as `"<1%"`, never `"0%"`. */
+export function formatShare(share: number): string {
+  const pct = Number.isFinite(share) ? Math.round(share * 100) : 0;
+  return pct === 0 && share > 0 ? '<1%' : `${pct}%`;
+}
+
 /** A running clock: `"00:42:10"`. Hours keep counting past 24. */
 export function formatClock(s: number): string {
   const total = wholeSeconds(s);

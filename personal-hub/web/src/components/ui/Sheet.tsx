@@ -12,6 +12,19 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
 
 /**
+ * Whether Tab can actually land on `el`: not disabled (a disabled fieldset
+ * counts), not under `[hidden]`, and not inside anything `display: none` up to
+ * the dialog. Uses no layout APIs, so it behaves the same in jsdom.
+ */
+function reachable(el: HTMLElement, dialog: HTMLElement) {
+  if (el.matches(':disabled') || el.closest('[hidden]')) return false;
+  for (let node: HTMLElement | null = el; node && node !== dialog; node = node.parentElement) {
+    if (getComputedStyle(node).display === 'none') return false;
+  }
+  return true;
+}
+
+/**
  * A modal dialog in smoked glass over a dimmed page. Focus moves in on open (to
  * the element marked `data-autofocus`, else the dialog), stays inside while open
  * (Tab wraps) and returns to where it was on close.
@@ -42,8 +55,9 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
       onClose();
       return;
     }
-    if (e.key !== 'Tab' || !dialogRef.current) return;
-    const items = [...dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+    const dialog = dialogRef.current;
+    if (e.key !== 'Tab' || !dialog) return;
+    const items = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => reachable(el, dialog));
     const first = items[0];
     const last = items[items.length - 1];
     if (!first || !last) {
@@ -51,7 +65,7 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
       return;
     }
     const active = document.activeElement;
-    if (e.shiftKey && (active === first || active === dialogRef.current)) {
+    if (e.shiftKey && (active === first || active === dialog)) {
       e.preventDefault();
       last.focus();
     } else if (!e.shiftKey && active === last) {

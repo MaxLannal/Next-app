@@ -60,4 +60,30 @@ describe('Sheet', () => {
     await user.tab({ shift: true });
     expect(document.activeElement).toBe(save);
   });
+
+  it('wraps Tab past elements that are hidden or disabled', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <button type="button">Outside</button>
+        <Sheet open onClose={() => {}} title="Wrap up">
+          <button type="button">Save</button>
+          <button type="button" tabIndex={0} disabled>
+            Archive
+          </button>
+          <div hidden>
+            <button type="button">Advanced</button>
+          </div>
+        </Sheet>
+      </>,
+    );
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    const save = screen.getByRole('button', { name: 'Save' });
+    save.focus();
+    await user.tab();
+    expect(document.activeElement).toBe(close);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(save);
+  });
 });
