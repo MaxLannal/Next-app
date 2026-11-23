@@ -8,7 +8,7 @@ export const STAGE_MIN_H = 300;
 export const STAGE_W = 2400;
 export const STAGE_LEFT = -STAGE_W / 2;
 /** Room above the first card in a stage, under the stage's name. */
-export const STAGE_PAD_TOP = 48;
+export const STAGE_PAD_TOP = 76;
 /** Room under the lowest card in a stage. */
 export const STAGE_PAD_BOTTOM = 32;
 /** A step card grows with its text between these widths, then wraps. */

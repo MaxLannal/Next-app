@@ -42,10 +42,11 @@
 .stage:not(.is-open) { border-top: 1px dashed color-mix(in oklab, var(--color-light) 14%, transparent); }
 .stage.is-open { background: none; }
 .stage.is-target { background-color: color-mix(in oklab, var(--color-accent) 7%, transparent); }
-.stage__label { position: absolute; left: var(--space-lg); z-index: 1; display: flex; align-items: baseline; gap: 8px; color: color-mix(in oklab, var(--color-ink) 46%, transparent); font: 500 13px/1 var(--font-body); white-space: nowrap; }
+/* "Stage 1" small on top, the stage's name larger beneath it. */
+.stage__label { position: absolute; left: var(--space-lg); z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: color-mix(in oklab, var(--color-ink) 46%, transparent); font: 500 13px/1 var(--font-body); white-space: nowrap; }
 .stage__label.is-open { color: color-mix(in oklab, var(--color-accent) 70%, transparent); }
 .stage__num { pointer-events: none; }
-.stage__name { min-width: 0; margin: -4px 0; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--color-ink-2); font: inherit; cursor: text; transition: background-color var(--dur-micro) var(--ease-out); }
+.stage__name { min-width: 0; margin: -4px 0 -4px -8px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--color-ink-2); font: 500 22px/1.15 var(--font-display); letter-spacing: -0.01em; cursor: text; transition: background-color var(--dur-micro) var(--ease-out); }
 .stage__name::placeholder { color: color-mix(in oklab, var(--color-ink) 22%, transparent); }
 .stage__name:hover { background: color-mix(in oklab, var(--color-light) 5%, transparent); }
 .stage__name:focus { outline: none; background: color-mix(in oklab, var(--color-light) 8%, transparent); color: var(--color-ink); }
