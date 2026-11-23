@@ -92,6 +92,7 @@ it('streams an answer as server-sent events and stores both turns', async () => 
     ['assistant', 'You are 60% through.'],
   ]);
   expect(sent).toEqual([
+    ['saved', { type: 'saved', messageId: stored[0].id }],
     ['text', { type: 'text', delta: 'You are 60' }],
     ['text', { type: 'text', delta: '% through.' }],
     ['done', { type: 'done', messageId: stored[1].id }],
@@ -113,26 +114,70 @@ it('sends an error event when Claude is not set up', async () => {
   const id = await newConversation();
   const res = await t.req('POST', `/api/chat/conversations/${id}/messages`, { content: 'Hi' });
   const sent = events(await res.text());
-  expect(sent).toEqual([['error', { type: 'error', message: "Claude couldn't answer: no scripted Claude reply in this test" }]]);
+  expect(sent).toEqual([
+    ['saved', { type: 'saved', messageId: expect.any(Number) }],
+    ['error', { type: 'error', message: 'Claude couldn’t answer: no scripted Claude reply in this test' }],
+  ]);
 });
 
-it('retries the last question instead of asking it twice', async () => {
-  const id = await newConversation();
-  // The first try fails: the question is kept with no answer.
-  await (await t.req('POST', `/api/chat/conversations/${id}/messages`, { content: 'How did I sleep?' })).text();
-  expect((await messages(id)).map((m) => m.role)).toEqual(['user']);
+/** Sends a question and returns the id its `saved` event named. */
+async function ask(id: number, body: Record<string, unknown>): Promise<number | undefined> {
+  const sent = events(await (await t.req('POST', `/api/chat/conversations/${id}/messages`, body)).text());
+  return (sent.find(([event]) => event === 'saved')?.[1] as { messageId: number } | undefined)?.messageId;
+}
 
+it('retries from the saved question instead of asking it twice', async () => {
+  const id = await newConversation();
   answer('Seven hours.');
-  await (await t.req('POST', `/api/chat/conversations/${id}/messages`, { content: 'How did I sleep?', retry: true })).text();
+  await ask(id, { content: 'How did I sleep?' });
+  // The next question fails at the gateway: it is stored, with no answer.
+  const saved = await ask(id, { content: 'And this week?' });
+  expect((await messages(id)).map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+
+  answer('Fifty hours.');
+  const again = await ask(id, { content: 'And this week?', replaceFrom: saved });
   expect((await messages(id)).map((m) => [m.role, m.content])).toEqual([
     ['user', 'How did I sleep?'],
     ['assistant', 'Seven hours.'],
+    ['user', 'And this week?'],
+    ['assistant', 'Fifty hours.'],
   ]);
 
-  // Regenerating an answered question replaces the answer.
-  answer('Seven hours and ten minutes.');
-  await (await t.req('POST', `/api/chat/conversations/${id}/messages`, { content: 'How did I sleep?', retry: true })).text();
-  expect((await messages(id)).map((m) => m.content)).toEqual(['How did I sleep?', 'Seven hours and ten minutes.']);
+  // Regenerating an answered question replaces just that answer.
+  answer('Fifty hours and ten minutes.');
+  await ask(id, { content: 'And this week?', replaceFrom: again });
+  expect((await messages(id)).map((m) => m.content)).toEqual(['How did I sleep?', 'Seven hours.', 'And this week?', 'Fifty hours and ten minutes.']);
+});
+
+it('keeps the earlier turns when retrying a question the hub never stored', async () => {
+  const id = await newConversation();
+  answer('Seven hours.', 'Fifty hours.');
+  await ask(id, { content: 'How did I sleep?' });
+  // "And this week?" never reached the hub (the connection dropped), so the sidebar has no saved
+  // id for it, and its Retry is a plain question.
+  await ask(id, { content: 'And this week?' });
+  expect((await messages(id)).map((m) => m.content)).toEqual(['How did I sleep?', 'Seven hours.', 'And this week?', 'Fifty hours.']);
+});
+
+it('rewinds only from a question of this conversation', async () => {
+  const id = await newConversation();
+  const other = await newConversation();
+  answer('Seven hours.', 'Elsewhere.', 'Fifty hours.', 'Sixty hours.');
+  await ask(id, { content: 'How did I sleep?' });
+  const otherQuestion = await ask(other, { content: 'Another chat' });
+  const [, answerRow] = await messages(id);
+
+  await ask(id, { content: 'And this week?', replaceFrom: answerRow.id });
+  await ask(id, { content: 'And this month?', replaceFrom: otherQuestion });
+  expect((await messages(id)).map((m) => m.content)).toEqual([
+    'How did I sleep?',
+    'Seven hours.',
+    'And this week?',
+    'Fifty hours.',
+    'And this month?',
+    'Sixty hours.',
+  ]);
+  expect((await messages(other)).map((m) => m.content)).toEqual(['Another chat', 'Elsewhere.']);
 });
 
 it('refuses an empty message and an unknown conversation', async () => {

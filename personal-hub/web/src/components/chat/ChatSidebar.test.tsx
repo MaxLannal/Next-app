@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -65,12 +65,33 @@ function renderSidebar(path = '/') {
 
 const bodyOf = (init?: RequestInit) => JSON.parse(String(init?.body)) as Record<string, unknown>;
 
+function setWindowWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+  window.dispatchEvent(new Event('resize'));
+}
+
+/** An SSE reply that sends `first`, then stays open until the request is aborted. */
+function openStream(init: RequestInit | undefined, first: ChatEvent[] = []): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const e of first) controller.enqueue(encoder.encode(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`));
+      init?.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')));
+    },
+  });
+  return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+}
+
+const QUIET = { 'GET /api/chat/status': () => json(READY), 'GET /api/chat/conversations': () => json(NO_CONVERSATIONS) };
+
 beforeEach(() => {
   localStorage.clear();
   stubWidth(true);
+  setWindowWidth(1600);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  setWindowWidth(1024);
   document.documentElement.style.removeProperty('--chat-space');
 });
 
@@ -102,6 +123,7 @@ describe('ChatSidebar', () => {
       'POST /api/chat/conversations': () => json({ id: 7 }, 201),
       'POST /api/chat/conversations/7/messages': () =>
         sse([
+          { type: 'saved', messageId: 1 },
           { type: 'tool', name: 'goal_progress' },
           { type: 'text', delta: 'You are **60%** ' },
           { type: 'text', delta: 'through.' },
@@ -115,19 +137,19 @@ describe('ChatSidebar', () => {
     expect(await screen.findByText('60%')).toBeTruthy();
     expect(screen.getByText('How far am I on my goals?', { selector: '.chat-msg--user *' })).toBeTruthy();
     const send = fetchMock.mock.calls.find(([path]) => path === '/api/chat/conversations/7/messages');
-    expect(bodyOf(send?.[1])).toEqual({ content: 'How far am I on my goals?', page: '/essays', retry: false });
+    expect(bodyOf(send?.[1])).toEqual({ content: 'How far am I on my goals?', page: '/essays' });
     expect(localStorage.getItem('hub:chat-conversation')).toBe('7');
     expect(screen.getByRole('button', { name: 'Regenerate' })).toBeTruthy();
   });
 
-  it('shows an error inline and retries the same question', async () => {
+  it('shows an error inline and retries from the saved question', async () => {
     const fetchMock = stubHub({
       'GET /api/chat/status': () => json(READY),
       'GET /api/chat/conversations': () => json(NO_CONVERSATIONS),
       'POST /api/chat/conversations': () => json({ id: 3 }, 201),
       'POST /api/chat/conversations/3/messages': [
-        () => sse([{ type: 'error', message: "Claude couldn't answer: the gateway is busy — retry in a minute" }]),
-        () => sse([{ type: 'text', delta: 'Seven hours.' }, { type: 'done', messageId: 2 }]),
+        () => sse([{ type: 'saved', messageId: 11 }, { type: 'error', message: 'Claude couldn’t answer: the gateway is busy — retry in a minute' }]),
+        () => sse([{ type: 'saved', messageId: 12 }, { type: 'text', delta: 'Seven hours.' }, { type: 'done', messageId: 13 }]),
       ],
     });
     renderSidebar();
@@ -135,14 +157,87 @@ describe('ChatSidebar', () => {
     const field = await screen.findByLabelText('Ask Claude');
     await userEvent.type(field, 'How did I sleep?{Enter}');
 
-    expect((await screen.findByRole('alert')).textContent).toContain("Claude couldn't answer: the gateway is busy");
+    expect((await screen.findByRole('alert')).textContent).toContain('Claude couldn’t answer: the gateway is busy');
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByText('Seven hours.')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     const sends = fetchMock.mock.calls.filter(([path]) => path === '/api/chat/conversations/3/messages');
-    expect(sends.map(([, init]) => bodyOf(init).retry)).toEqual([false, true]);
+    expect(sends.map(([, init]) => bodyOf(init).replaceFrom)).toEqual([undefined, 11]);
     expect(screen.getAllByText('How did I sleep?')).toHaveLength(1);
+  });
+
+  it('asks again without replacing anything when the question never reached the hub', async () => {
+    const fetchMock = stubHub({
+      ...QUIET,
+      'POST /api/chat/conversations': () => json({ id: 3 }, 201),
+      'POST /api/chat/conversations/3/messages': [
+        () => {
+          throw new TypeError('Failed to fetch');
+        },
+        () => sse([{ type: 'saved', messageId: 12 }, { type: 'text', delta: 'Seven hours.' }, { type: 'done', messageId: 13 }]),
+      ],
+    });
+    renderSidebar();
+    await userEvent.type(await screen.findByLabelText('Ask Claude'), 'How did I sleep?{Enter}');
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Couldn’t reach the hub');
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Seven hours.')).toBeTruthy();
+    const sends = fetchMock.mock.calls.filter(([path]) => path === '/api/chat/conversations/3/messages');
+    expect(sends.map(([, init]) => 'replaceFrom' in bodyOf(init))).toEqual([false, false]);
+    expect(screen.getAllByText('How did I sleep?')).toHaveLength(1);
+  });
+
+  it('says the answer stopped early when the stream ends without a finish', async () => {
+    stubHub({
+      ...QUIET,
+      'POST /api/chat/conversations': () => json({ id: 3 }, 201),
+      'POST /api/chat/conversations/3/messages': () => sse([{ type: 'saved', messageId: 11 }, { type: 'text', delta: 'Half an' }]),
+    });
+    renderSidebar();
+    await userEvent.type(await screen.findByLabelText('Ask Claude'), 'How did I sleep?{Enter}');
+    expect((await screen.findByRole('alert')).textContent).toBe('The answer stopped early — retry');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  it('starts a new chat and asks once more when the open one was deleted elsewhere', async () => {
+    localStorage.setItem('hub:chat-conversation', '7');
+    const fetchMock = stubHub({
+      ...QUIET,
+      'GET /api/chat/conversations/7': () => json([]),
+      'POST /api/chat/conversations/7/messages': () => json({ error: 'Not found' }, 404),
+      'POST /api/chat/conversations': () => json({ id: 8 }, 201),
+      'POST /api/chat/conversations/8/messages': () => sse([{ type: 'saved', messageId: 1 }, { type: 'text', delta: 'Seven hours.' }, { type: 'done', messageId: 2 }]),
+    });
+    renderSidebar();
+    await userEvent.type(await screen.findByLabelText('Ask Claude'), 'How did I sleep?{Enter}');
+
+    expect(await screen.findByText('Seven hours.')).toBeTruthy();
+    expect(localStorage.getItem('hub:chat-conversation')).toBe('8');
+    expect(fetchMock.mock.calls.filter(([path]) => path === '/api/chat/conversations/8/messages')).toHaveLength(1);
+  });
+
+  it('offers Retry after Stop pressed before any of the answer arrived', async () => {
+    const fetchMock = stubHub({
+      ...QUIET,
+      'POST /api/chat/conversations': () => json({ id: 3 }, 201),
+      'POST /api/chat/conversations/3/messages': [
+        (init) => openStream(init, [{ type: 'saved', messageId: 11 }]),
+        () => sse([{ type: 'saved', messageId: 12 }, { type: 'text', delta: 'Seven hours.' }, { type: 'done', messageId: 13 }]),
+      ],
+    });
+    renderSidebar();
+    await userEvent.type(await screen.findByLabelText('Ask Claude'), 'How did I sleep?{Enter}');
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+
+    expect(await screen.findByText('Stopped before Claude answered')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Seven hours.')).toBeTruthy();
+    const sends = fetchMock.mock.calls.filter(([path]) => path === '/api/chat/conversations/3/messages');
+    expect(bodyOf(sends[1][1]).replaceFrom).toBe(11);
   });
 
   it('adds a line on Shift+Enter instead of sending', async () => {
@@ -165,6 +260,42 @@ describe('ChatSidebar', () => {
     expect(await screen.findByLabelText('Ask Claude')).toBeTruthy();
   });
 
+  it('starts as the rail on a window under 1440 px, unless the user chose otherwise', async () => {
+    setWindowWidth(1280);
+    stubHub(QUIET);
+    const first = renderSidebar();
+    expect(await screen.findByRole('button', { name: 'Open chat' })).toBeTruthy();
+    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('72px');
+    first.unmount();
+
+    localStorage.setItem('hub:chat-open', '1');
+    renderSidebar();
+    expect(await screen.findByLabelText('Ask Claude')).toBeTruthy();
+  });
+
+  it('floats over the page while less than 1040 px of window would be left, and makes room again when there is', async () => {
+    localStorage.setItem('hub:chat-open', '1');
+    setWindowWidth(1280);
+    stubHub(QUIET);
+    renderSidebar();
+    const panel = (await screen.findByRole('complementary', { name: 'Chat' })) as HTMLElement;
+    expect(panel.className).toContain('chat--over');
+    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('');
+
+    act(() => setWindowWidth(1600));
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('424px'));
+    expect(screen.getByRole('complementary', { name: 'Chat' }).className).not.toContain('chat--over');
+  });
+
+  it('floats the rail too on a window under 1088 px', async () => {
+    setWindowWidth(1000);
+    stubHub(QUIET);
+    renderSidebar();
+    expect(await screen.findByRole('button', { name: 'Open chat' })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Chat' }).className).toContain('chat--over');
+    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('');
+  });
+
   it('opens as a sheet from the Ask pill on a narrow screen', async () => {
     stubWidth(false);
     stubHub({ 'GET /api/chat/status': () => json(READY), 'GET /api/chat/conversations': () => json(NO_CONVERSATIONS) });
@@ -178,6 +309,27 @@ describe('ChatSidebar', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Ask Claude')));
 
     fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('narrow sheet before setup', () => {
+  it('puts focus on the sheet heading, and Open Settings closes the sheet', async () => {
+    stubWidth(false);
+    const fetchMock = stubHub({
+      'GET /api/chat/status': () => json({ configured: false, model: 'claude-opus-5-5' }),
+      'GET /api/chat/conversations': () => json(NO_CONVERSATIONS),
+    });
+    renderSidebar();
+    // The status has arrived, so the field is off when the sheet opens.
+    await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => path === '/api/chat/status')).toBe(true));
+    await act(async () => {});
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    const heading = await screen.findByRole('heading', { name: 'Chat' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+
+    await userEvent.click(screen.getByRole('link', { name: 'Open Settings' }));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

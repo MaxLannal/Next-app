@@ -41,6 +41,8 @@ type MessageViewProps = {
   streaming: boolean;
   tool: string | null;
   error: string | null;
+  /** Stop was pressed before any of the answer arrived. */
+  stopped?: boolean;
   onRetry: () => void;
   /** Shown before the first message. */
   empty: ReactNode;
@@ -50,18 +52,19 @@ type MessageViewProps = {
  * The conversation: the user's questions on paper-3, Claude's answers unboxed in Markdown (tables,
  * math, code), the tool line while one runs, and an error with Retry in place of an answer.
  */
-export function MessageView({ turns, streaming, tool, error, onRetry, empty }: MessageViewProps) {
+export function MessageView({ turns, streaming, tool, error, stopped = false, onRetry, empty }: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const last = turns.at(-1);
   const canRegenerate = !streaming && error === null && last?.role === 'assistant';
+  const showStopped = stopped && error === null && !streaming && last?.role === 'user';
   const waiting = streaming && tool === null && last?.role === 'user';
 
   // Follows the answer as it streams, unless the user has scrolled up to read.
   useEffect(() => {
     const el = scrollRef.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [turns, tool, error, streaming]);
+  }, [turns, tool, error, streaming, stopped]);
 
   return (
     <div
@@ -109,6 +112,15 @@ export function MessageView({ turns, streaming, tool, error, onRetry, empty }: M
         <div className="chat__error">
           <p role="alert">{error}</p>
           <button className="btn btn-ghost btn-sm" type="button" onClick={onRetry} disabled={streaming}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {showStopped && (
+        <div className="chat__error chat__error--quiet">
+          <p>Stopped before Claude answered</p>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onRetry}>
             Retry
           </button>
         </div>

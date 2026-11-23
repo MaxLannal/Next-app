@@ -286,8 +286,12 @@ export type ChatConversation = { id: number; title: string; createdAt: string; u
 /** A stored turn: what the user asked, or the text Claude answered. */
 export type ChatMessage = { id: number; role: 'user' | 'assistant'; content: string; createdAt: string };
 
-/** One server-sent event of a chat answer; the SSE event name is `type`. */
+/**
+ * One server-sent event of a chat answer; the SSE event name is `type`. `saved` comes first,
+ * with the stored question's id: the id a retry names in `replaceFrom`.
+ */
 export type ChatEvent =
+  | { type: 'saved'; messageId: number }
   | { type: 'text'; delta: string }
   | { type: 'tool'; name: string }
   | { type: 'done'; messageId: number }

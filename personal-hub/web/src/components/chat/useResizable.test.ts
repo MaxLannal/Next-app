@@ -58,6 +58,14 @@ describe('useResizable', () => {
     expect(renderHook(() => useResizable(OPTIONS)).result.current.width).toBe(400);
   });
 
+  it('starts as the first-run default until a choice is saved', () => {
+    expect(renderHook(() => useResizable({ ...OPTIONS, defaultCollapsed: true })).result.current.collapsed).toBe(true);
+    localStorage.setItem('hub:chat-open', '1');
+    expect(renderHook(() => useResizable({ ...OPTIONS, defaultCollapsed: true })).result.current.collapsed).toBe(false);
+    localStorage.setItem('hub:chat-open', '0');
+    expect(renderHook(() => useResizable({ ...OPTIONS, defaultCollapsed: false })).result.current.collapsed).toBe(true);
+  });
+
   it('collapses to the rail and remembers it', () => {
     const { result, unmount } = renderHook(() => useResizable(OPTIONS));
     expect(result.current.collapsed).toBe(false);

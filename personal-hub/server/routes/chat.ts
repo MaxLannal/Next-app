@@ -8,7 +8,7 @@ import {
   deleteConversation,
   getMessages,
   listConversations,
-  rewindToLastUser,
+  rewindFrom,
   runChat,
 } from '../services/chat.ts';
 
@@ -47,8 +47,10 @@ export function chatRoutes(ctx: AppContext): Hono {
     return deleteConversation(ctx, id) ? c.body(null, 204) : c.json({ error: 'Not found' }, 404);
   });
 
-  // `{content, page?, retry?}`. `page` is the path the user asked from; `retry` asks the last question
-  // again in place of its answer. Each `ChatEvent` is one SSE event named by its type.
+  // `{content, page?, replaceFrom?}`. `page` is the path the user asked from. `replaceFrom` is the id
+  // of a stored question (from its `saved` event) that this one replaces, with everything after
+  // it; an id that isn't one of this conversation's questions changes nothing. Each `ChatEvent`
+  // is one SSE event named by its type.
   routes.post(`${ID}/messages`, async (c) => {
     const id = found(c);
     if (id === null) return c.json({ error: 'Not found' }, 404);
@@ -57,7 +59,7 @@ export function chatRoutes(ctx: AppContext): Hono {
     if (content === '') return c.json({ error: 'Write a question first' }, 400);
     if (content.length > MAX_MESSAGE) return c.json({ error: `A question can be ${MAX_MESSAGE} characters at most` }, 400);
     const page = typeof body.page === 'string' && body.page.length <= MAX_PAGE ? body.page : undefined;
-    if (body.retry === true) rewindToLastUser(ctx, id);
+    if (typeof body.replaceFrom === 'number' && Number.isSafeInteger(body.replaceFrom)) rewindFrom(ctx, id, body.replaceFrom);
 
     return streamSSE(c, async (stream) => {
       // the user closing the tab, or pressing Stop, ends the request: the answer stops with it.

@@ -40,6 +40,7 @@ function reply(content: unknown[], stopReason: Anthropic.Message['stop_reason'])
 }
 
 const text = (s: string) => ({ type: 'text', text: s, citations: null });
+const SAVED = { type: 'saved', messageId: expect.any(Number) };
 const toolUse = (id: string, name: string, input: unknown) => ({ type: 'tool_use', id, name, input });
 
 /**
@@ -168,15 +169,16 @@ describe('runChat', () => {
 
     const events = await chat(id, 'How far am I on my goals?');
 
-    expect(events.map((e) => e.type)).toEqual(['tool', 'text', 'done']);
-    expect(events[0]).toEqual({ type: 'tool', name: 'goal_progress' });
-    expect(events[1]).toEqual({ type: 'text', delta: "You're 60% through." });
+    expect(events.map((e) => e.type)).toEqual(['saved', 'tool', 'text', 'done']);
+    expect(events[1]).toEqual({ type: 'tool', name: 'goal_progress' });
+    expect(events[2]).toEqual({ type: 'text', delta: "You're 60% through." });
     const stored = getMessages(t, id);
     expect(stored.map((m) => [m.role, m.content])).toEqual([
       ['user', 'How far am I on my goals?'],
       ['assistant', "You're 60% through."],
     ]);
-    expect(events[2]).toEqual({ type: 'done', messageId: stored[1].id });
+    expect(events[0]).toEqual({ type: 'saved', messageId: stored[0].id });
+    expect(events[3]).toEqual({ type: 'done', messageId: stored[1].id });
 
     // The tool's answer goes back as one user message holding one tool_result.
     expect(calls).toHaveLength(2);
@@ -230,7 +232,7 @@ describe('runChat', () => {
 
     const events = await chat(id, 'What was in session x?');
 
-    expect(events.map((e) => e.type)).toEqual(['tool', 'text', 'done']);
+    expect(events.map((e) => e.type)).toEqual(['saved', 'tool', 'text', 'done']);
     const results = calls[1].messages.at(-1)?.content as Anthropic.ToolResultBlockParam[];
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'tu_1', is_error: true });
@@ -258,11 +260,11 @@ describe('runChat', () => {
 
     const events = await chat(id, 'Something it declines');
 
-    expect(events).toEqual([{ type: 'error', message: 'Claude declined this request' }]);
+    expect(events).toEqual([SAVED, { type: 'error', message: 'Claude declined this request' }]);
     expect(getMessages(t, id).map((m) => m.role)).toEqual(['user']);
   });
 
-  it("says Claude couldn't answer when the gateway fails, and keeps no reply", async () => {
+  it('says Claude couldn’t answer when the gateway fails, and keeps no reply', async () => {
     t.fakes.claude.streamTurn = async () => {
       throw new UnavailableError('Model not found on the gateway');
     };
@@ -270,7 +272,7 @@ describe('runChat', () => {
 
     const events = await chat(id, 'How far am I on my goals?');
 
-    expect(events).toEqual([{ type: 'error', message: "Claude couldn't answer: model not found on the gateway" }]);
+    expect(events).toEqual([SAVED, { type: 'error', message: 'Claude couldn’t answer: model not found on the gateway' }]);
     expect(getMessages(t, id).map((m) => m.role)).toEqual(['user']);
   });
 
@@ -278,13 +280,13 @@ describe('runChat', () => {
     const cases: [Error, string][] = [
       [
         new Anthropic.PaymentRequiredError(402, { error: { message: 'Wallet balance too low' } }, '402 balance', new Headers()),
-        "Claude couldn't answer: the gateway account is out of credit — top it up, then retry",
+        'Claude couldn’t answer: the gateway account is out of credit — top it up, then retry',
       ],
-      [new Anthropic.APIConnectionError({ message: 'Connection error.' }), "Claude couldn't answer: the gateway didn't answer — check the connection and retry"],
-      [new Anthropic.AuthenticationError(401, {}, '401', new Headers()), "Claude couldn't answer: the gateway refused the token — run setup again"],
+      [new Anthropic.APIConnectionError({ message: 'Connection error.' }), 'Claude couldn’t answer: the gateway didn’t answer — check the connection and retry'],
+      [new Anthropic.AuthenticationError(401, {}, '401', new Headers()), 'Claude couldn’t answer: the gateway refused the token — run setup again'],
       [
         new Anthropic.InternalServerError(500, { error: { message: 'Overloaded' } }, '500', new Headers()),
-        "Claude couldn't answer: the gateway answered 500: Overloaded",
+        'Claude couldn’t answer: the gateway answered 500: Overloaded',
       ],
     ];
     for (const [err, message] of cases) {
@@ -292,7 +294,7 @@ describe('runChat', () => {
         throw err;
       };
       const events = await chat(createConversation(t), 'Hi');
-      expect(events).toEqual([{ type: 'error', message }]);
+      expect(events).toEqual([SAVED, { type: 'error', message }]);
     }
   });
 
@@ -305,7 +307,7 @@ describe('runChat', () => {
 
     expect(calls).toHaveLength(9);
     expect(events.filter((e) => e.type === 'tool')).toHaveLength(8);
-    expect(events.at(-1)).toEqual({ type: 'error', message: "Claude couldn't answer: it needed more than 8 lookups — try a narrower question" });
+    expect(events.at(-1)).toEqual({ type: 'error', message: 'Claude couldn’t answer: it needed more than 8 lookups — try a narrower question' });
     expect(getMessages(t, id).map((m) => m.role)).toEqual(['user']);
   });
 
@@ -313,7 +315,7 @@ describe('runChat', () => {
     script(reply([text('A long answer that ran')], 'max_tokens'));
     const id = createConversation(t);
     const events = await chat(id, 'Tell me everything');
-    expect(events.map((e) => e.type)).toEqual(['text', 'done']);
+    expect(events.map((e) => e.type)).toEqual(['saved', 'text', 'done']);
     expect(getMessages(t, id)[1].content).toBe('A long answer that ran');
   });
 
@@ -328,11 +330,32 @@ describe('runChat', () => {
     const events: ChatEvent[] = [];
     await runChat(t, id, 'Question', (e) => events.push(e), controller.signal);
 
-    expect(events).toEqual([{ type: 'text', delta: 'Half an ans' }]);
+    expect(events).toEqual([SAVED, { type: 'text', delta: 'Half an ans' }]);
     expect(getMessages(t, id).map((m) => [m.role, m.content])).toEqual([
       ['user', 'Question'],
       ['assistant', 'Half an ans'],
     ]);
+  });
+
+  it('sends at most the last 40 stored turns, starting with a question', async () => {
+    const id = createConversation(t);
+    const insert = t.db.prepare('INSERT INTO chat_messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)');
+    for (let i = 0; i < 45; i++) insert.run(id, i % 2 === 0 ? 'user' : 'assistant', `turn ${i}`, TEST_NOW);
+    const calls = script(reply([text('Noted.')], 'end_turn'));
+
+    await chat(id, 'And now?');
+
+    const earlier = calls[0].messages.slice(0, -1);
+    expect(earlier.length).toBeLessThanOrEqual(40);
+    expect(earlier[0]).toEqual({ role: 'user', content: 'turn 6' });
+    expect(earlier.at(-1)).toEqual({ role: 'user', content: 'turn 44' });
+  });
+
+  it('reports a failure to store the question as an error, never a throw', async () => {
+    const events = await chat(999, 'A conversation that is gone');
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'error' });
+    expect((events[0] as { message: string }).message).toMatch(/^Claude couldn’t answer: /);
   });
 
   it('titles a new conversation with the first 60 characters of the first message', async () => {

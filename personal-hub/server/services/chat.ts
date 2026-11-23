@@ -21,6 +21,8 @@ export const SYSTEM_PROMPT =
   "You are the user's assistant inside their personal hub. Answer from their data using the tools; quote figures exactly; when the data doesn't hold an answer, say so. Be brief and concrete.";
 
 const MAX_TOOL_ROUNDS = 8;
+/** Earlier turns sent with a question; the snapshot and the tools carry everything older. */
+const MAX_HISTORY = 40;
 const TITLE_LENGTH = 60;
 const FOCUS_WINDOWS = [7, 30, 365];
 
@@ -60,14 +62,18 @@ export function deleteConversation(ctx: AppContext, id: number): boolean {
   return Number(ctx.db.prepare('DELETE FROM chat_conversations WHERE id = ?').run(id).changes) > 0;
 }
 
-/** Drops the last question and anything after it, so a retry asks it once, not twice. */
-export function rewindToLastUser(ctx: AppContext, conversationId: number): void {
-  ctx.db
-    .prepare(
-      `DELETE FROM chat_messages WHERE conversation_id = ? AND id >=
-         (SELECT max(id) FROM chat_messages WHERE conversation_id = ? AND role = 'user')`,
-    )
-    .run(conversationId, conversationId);
+/**
+ * Drops the question `messageId` and everything after it, so a retry asks it once, not twice.
+ * Only a question of this conversation qualifies; anything else leaves the conversation alone.
+ * True when it rewound.
+ */
+export function rewindFrom(ctx: AppContext, conversationId: number, messageId: number): boolean {
+  const row = ctx.db.prepare('SELECT role FROM chat_messages WHERE id = ? AND conversation_id = ?').get(messageId, conversationId) as
+    | { role: ChatMessage['role'] }
+    | undefined;
+  if (row?.role !== 'user') return false;
+  ctx.db.prepare('DELETE FROM chat_messages WHERE conversation_id = ? AND id >= ?').run(conversationId, messageId);
+  return true;
 }
 
 /** Stores a turn; the first question also titles an untitled conversation. */
@@ -193,10 +199,12 @@ function asClause(message: string): string {
   return message.charAt(0).toLowerCase() + message.slice(1);
 }
 
+const COULDNT = 'Claude couldn’t answer';
+
 /** Why Claude couldn't answer, in the hub's calm voice. Never carries the token. */
 function failure(err: unknown): string {
   let reason: string;
-  if (err instanceof Anthropic.APIConnectionError) reason = "the gateway didn't answer — check the connection and retry";
+  if (err instanceof Anthropic.APIConnectionError) reason = 'the gateway didn’t answer — check the connection and retry';
   else if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
     reason = 'the gateway refused the token — run setup again';
   } else if (err instanceof Anthropic.PaymentRequiredError) reason = 'the gateway account is out of credit — top it up, then retry';
@@ -206,21 +214,24 @@ function failure(err: unknown): string {
     reason = `the gateway answered ${err.status ?? 'with an error'}${typeof detail === 'string' ? `: ${detail}` : ''}`;
   } else if (err instanceof Error && err.message !== '') reason = asClause(err.message);
   else reason = 'something went wrong';
-  return `Claude couldn't answer: ${reason}`;
+  return `${COULDNT}: ${reason}`;
 }
 
-/** The stored turns before `beforeId`, as text. */
+/** The last 40 stored turns before `beforeId`, as text, starting with a question. */
 function history(ctx: AppContext, conversationId: number, beforeId: number): Anthropic.MessageParam[] {
-  return getMessages(ctx, conversationId)
+  const turns = getMessages(ctx, conversationId)
     .filter((m) => m.id < beforeId)
-    .map((m) => ({ role: m.role, content: m.content }));
+    .slice(-MAX_HISTORY);
+  if (turns[0]?.role === 'assistant') turns.shift();
+  return turns.map((m) => ({ role: m.role, content: m.content }));
 }
 
 /**
- * Answers `userText` in the conversation: stores the question, asks Claude with the history and
- * a fresh snapshot, runs up to 8 rounds of tools, and stores the answer. Text streams out as
- * `text` events; a tool call as `tool`; the end as `done` (with the stored answer's id) or
- * `error`. `page` is the path the user asked from. An abort keeps what had streamed and sends nothing.
+ * Answers `userText` in the conversation: stores the question (`saved`, with its id), asks Claude
+ * with the recent history and a fresh snapshot, runs up to 8 rounds of tools, and stores the
+ * answer. Text streams out as `text` events; a tool call as `tool`; the end as `done` (with the
+ * stored answer's id) or `error`. `page` is the path the user asked from. An abort keeps what had
+ * streamed and sends nothing.
  */
 export async function runChat(
   ctx: AppContext,
@@ -230,20 +241,7 @@ export async function runChat(
   signal: AbortSignal,
   page?: string,
 ): Promise<void> {
-  const tools = chatTools(ctx);
-  const questionId = addMessage(ctx, conversationId, 'user', userText);
-  const messages: Anthropic.MessageParam[] = [
-    ...history(ctx, conversationId, questionId),
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: buildSnapshot(ctx, page) },
-        { type: 'text', text: userText },
-      ],
-    },
-  ];
   const system: Anthropic.TextBlockParam[] = [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
-
   let text = '';
   let newRound = false;
   const onText = (delta: string) => {
@@ -259,6 +257,20 @@ export async function runChat(
   };
 
   try {
+    const tools = chatTools(ctx);
+    const questionId = addMessage(ctx, conversationId, 'user', userText);
+    emit({ type: 'saved', messageId: questionId });
+    const messages: Anthropic.MessageParam[] = [
+      ...history(ctx, conversationId, questionId),
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: buildSnapshot(ctx, page) },
+          { type: 'text', text: userText },
+        ],
+      },
+    ];
+
     for (let round = 0; ; round++) {
       if (signal.aborted) return keepWhatStreamed();
       const message = await ctx.claude.streamTurn({ system, messages: [...messages], tools: tools.definitions, signal }, onText);
@@ -270,7 +282,7 @@ export async function runChat(
       const calls = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
       if (message.stop_reason !== 'tool_use' || calls.length === 0) break;
       if (round === MAX_TOOL_ROUNDS) {
-        emit({ type: 'error', message: `Claude couldn't answer: it needed more than ${MAX_TOOL_ROUNDS} lookups — try a narrower question` });
+        emit({ type: 'error', message: `${COULDNT}: it needed more than ${MAX_TOOL_ROUNDS} lookups — try a narrower question` });
         return;
       }
 
@@ -294,7 +306,7 @@ export async function runChat(
   }
 
   if (text.trim() === '') {
-    emit({ type: 'error', message: "Claude couldn't answer: the reply was empty" });
+    emit({ type: 'error', message: `${COULDNT}: the reply was empty` });
     return;
   }
   emit({ type: 'done', messageId: addMessage(ctx, conversationId, 'assistant', text) });

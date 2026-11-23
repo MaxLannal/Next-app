@@ -58,30 +58,47 @@ export function sseParser(onEvent: (e: ChatEvent) => void): (chunk: string) => v
   };
 }
 
-/** Posts one question and reads the answer's events until the stream ends or `signal` aborts. */
+const UNREACHABLE = 'Couldn’t reach the hub';
+const STOPPED_EARLY = 'The answer stopped early — retry';
+
+/**
+ * Posts one question and reads the answer's events until the stream ends or `signal` aborts.
+ * A hub that can't be reached throws `ApiError` 0; a connection lost partway just ends the
+ * stream, and the caller sees that no `done` or `error` arrived.
+ */
 async function streamAnswer(
   conversationId: number,
-  body: { content: string; page: string; retry: boolean },
+  body: { content: string; page: string; replaceFrom?: number },
   signal: AbortSignal,
   onEvent: (e: ChatEvent) => void,
 ): Promise<void> {
-  const res = await fetch(`/api/chat/conversations/${conversationId}/messages`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-    body: JSON.stringify(body),
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/chat/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if (signal.aborted) throw err;
+    throw new ApiError(0, UNREACHABLE, null);
+  }
   if (!res.ok || !res.body) {
     if (res.status === 401) window.dispatchEvent(new Event(LOGIN_REQUIRED_EVENT));
     const reply = (await res.json().catch(() => null)) as { error?: unknown } | null;
-    throw new ApiError(res.status, typeof reply?.error === 'string' ? reply.error : `the hub answered ${res.status}`, reply);
+    throw new ApiError(res.status, typeof reply?.error === 'string' ? reply.error : `The hub answered ${res.status}`, reply);
   }
   const feed = sseParser(onEvent);
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    feed(value);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      feed(value);
+    }
+  } catch (err) {
+    if (signal.aborted) throw err;
   }
 }
 
@@ -102,6 +119,8 @@ export function useChat() {
   const [streaming, setStreaming] = useState(false);
   const [tool, setTool] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Stop was pressed before any of the answer arrived: the question waits for a Retry. */
+  const [stopped, setStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadRef = useRef(0);
 
@@ -111,6 +130,7 @@ export function useChat() {
     setConversationId(id);
     storeId(id);
     setError(null);
+    setStopped(false);
     setTool(null);
     setTurns([]);
     if (id === null) return;
@@ -133,43 +153,69 @@ export function useChat() {
     return () => abortRef.current?.abort();
   }, [open]);
 
+  /**
+   * Asks `content`. `retryOf` is the question being asked again: it and what follows leave the
+   * screen, and the hub replaces them only when it had stored that question (its `saved` id);
+   * a question the hub never got is simply asked.
+   */
   const send = useCallback(
-    async (content: string, page: string, retry = false) => {
+    async (content: string, page: string, retryOf?: Turn) => {
       const text = content.trim();
       if (text === '' || abortRef.current) return;
       const controller = new AbortController();
       abortRef.current = controller;
       setError(null);
+      setStopped(false);
       setStreaming(true);
-      setTurns((prev) => [...(retry ? beforeLastQuestion(prev) : prev), { key: nextKey(), role: 'user', content: text, id: null }]);
+      const questionKey = nextKey();
+      setTurns((prev) => [...(retryOf ? beforeLastQuestion(prev) : prev), { key: questionKey, role: 'user', content: text, id: null }]);
 
       const answerKey = nextKey();
       let answer = '';
-      try {
-        let id = conversationId;
-        if (id === null) {
-          id = (await api<{ id: number }>('/api/chat/conversations', { method: 'POST', signal: controller.signal })).id;
-          loadRef.current++;
-          setConversationId(id);
-          storeId(id);
+      let ended = false;
+      const onEvent = (e: ChatEvent) => {
+        if (e.type === 'saved') setTurns((prev) => prev.map((t) => (t.key === questionKey ? { ...t, id: e.messageId } : t)));
+        else if (e.type === 'tool') setTool(e.name);
+        else if (e.type === 'error') {
+          ended = true;
+          setError(e.message);
+        } else if (e.type === 'text') {
+          answer += e.delta;
+          const shown = answer;
+          setTool(null);
+          setTurns((prev) => {
+            const at = prev.findIndex((t) => t.key === answerKey);
+            const turn: Turn = { key: answerKey, role: 'assistant', content: shown, id: null };
+            return at === -1 ? [...prev, turn] : prev.map((t, i) => (i === at ? turn : t));
+          });
+        } else {
+          ended = true;
+          setTurns((prev) => prev.map((t) => (t.key === answerKey ? { ...t, id: e.messageId } : t)));
         }
-        await streamAnswer(id, { content: text, page, retry }, controller.signal, (e) => {
-          if (e.type === 'tool') setTool(e.name);
-          else if (e.type === 'error') setError(e.message);
-          else if (e.type === 'text') {
-            answer += e.delta;
-            const shown = answer;
-            setTool(null);
-            setTurns((prev) => {
-              const at = prev.findIndex((t) => t.key === answerKey);
-              const turn: Turn = { key: answerKey, role: 'assistant', content: shown, id: null };
-              return at === -1 ? [...prev, turn] : prev.map((t, i) => (i === at ? turn : t));
-            });
-          } else setTurns((prev) => prev.map((t) => (t.key === answerKey ? { ...t, id: e.messageId } : t)));
-        });
+      };
+      const newConversation = async () => {
+        const { id } = await api<{ id: number }>('/api/chat/conversations', { method: 'POST', signal: controller.signal });
+        loadRef.current++;
+        setConversationId(id);
+        storeId(id);
+        return id;
+      };
+
+      try {
+        const id = conversationId ?? (await newConversation());
+        const replaceFrom = retryOf?.id ?? undefined;
+        try {
+          await streamAnswer(id, { content: text, page, replaceFrom }, controller.signal, onEvent);
+        } catch (err) {
+          // The chat was deleted elsewhere: ask in a new one, once.
+          if (!(err instanceof ApiError && err.status === 404)) throw err;
+          await streamAnswer(await newConversation(), { content: text, page }, controller.signal, onEvent);
+        }
+        if (!ended && !controller.signal.aborted) setError(STOPPED_EARLY);
       } catch (err) {
-        if (!controller.signal.aborted) setError(`Claude couldn't answer: ${messageOf(err)}`);
+        if (!controller.signal.aborted) setError(err instanceof ApiError && err.status === 0 ? UNREACHABLE : messageOf(err));
       } finally {
+        if (controller.signal.aborted && answer === '') setStopped(true);
         abortRef.current = null;
         setStreaming(false);
         setTool(null);
@@ -186,7 +232,7 @@ export function useChat() {
   const retry = useCallback(
     (page: string) => {
       const last = [...turns].reverse().find((t) => t.role === 'user');
-      if (last) void send(last.content, page, true);
+      if (last) void send(last.content, page, last);
     },
     [turns, send],
   );
@@ -207,5 +253,5 @@ export function useChat() {
     [conversationId, open, queryClient],
   );
 
-  return { conversationId, turns, streaming, tool, error, open, send, stop, retry, remove };
+  return { conversationId, turns, streaming, tool, error, stopped, open, send, stop, retry, remove };
 }

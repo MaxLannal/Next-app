@@ -8,6 +8,8 @@ type Options = {
   storageKey: string;
   /** Where open or collapsed is kept (`hub:chat-open`): `'1'` or `'0'`. */
   openKey?: string;
+  /** Collapsed or not before anything is saved; a saved choice wins. */
+  defaultCollapsed?: boolean;
 };
 
 const STEP = 16;
@@ -35,12 +37,15 @@ function write(key: string, value: string): void {
  * that edge, clamped to `[min, max]` and remembered; and whether it is collapsed to its rail.
  * A `max` that shrinks with the window narrows the panel without forgetting the chosen width.
  */
-export function useResizable({ min, max, initial, storageKey, openKey = 'hub:chat-open' }: Options) {
+export function useResizable({ min, max, initial, storageKey, openKey = 'hub:chat-open', defaultCollapsed = false }: Options) {
   const [chosen, setChosen] = useState(() => {
     const stored = Number(read(storageKey) ?? Number.NaN);
     return Number.isFinite(stored) && stored > 0 ? clamp(stored, min, max) : initial;
   });
-  const [collapsed, setCollapsed] = useState(() => read(openKey) === '0');
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = read(openKey);
+    return saved === null ? defaultCollapsed : saved === '0';
+  });
   const [dragging, setDragging] = useState(false);
   const width = clamp(chosen, min, max);
   const latest = useRef(width);
