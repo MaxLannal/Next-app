@@ -333,7 +333,9 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
   const k = view?.k ?? 1;
   const detail = detailAt(k);
   const titleOf = (n: SkillNode) => (n.kind === 'step' ? n.title || 'Untitled step' : (n.session?.name ?? 'A deleted session'));
-  const anchor = (n: SkillNode) => anchorBox(box(n), titleOf(n), k, detail);
+  // The day above each title: when a step was completed, when an experience's session happened.
+  const dateOf = (n: SkillNode) => (n.kind === 'step' ? n.completedOn : (n.session?.startedAt ?? null));
+  const anchor = (n: SkillNode) => anchorBox(box(n), titleOf(n), k, detail, dateOf(n) !== null);
 
   const dragged = drag?.moved ? byId.get(drag.id) : undefined;
   const draggingLayer = dragged && drag ? layerAt(drag.wy + sizeOf(dragged, sizes).h / 2, drag.layout) : null;
@@ -393,6 +395,7 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
                 key={n.id}
                 node={n}
                 label={titleOf(n)}
+                labelDate={dateOf(n)}
                 at={b}
                 nodeRef={track}
                 linked={linkedCount.get(n.id) ?? 0}
@@ -408,6 +411,7 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
                 key={n.id}
                 node={n}
                 label={titleOf(n)}
+                labelDate={dateOf(n)}
                 at={b}
                 nodeRef={track}
                 linked={links.some((l) => l.experienceId === n.id)}
@@ -495,8 +499,9 @@ function StageLabel({ index, name, open, top, onSave }: { index: number; name: s
 
 type NodeBase = {
   node: SkillNode;
-  /** The title alone, shown at a steady screen size when zoomed out. */
+  /** The title alone, shown at a steady screen size when zoomed out, with its day above it. */
   label: string;
+  labelDate: string | null;
   at: Box;
   nodeRef: (el: HTMLDivElement | null) => void;
   dragging: boolean;
@@ -516,13 +521,14 @@ type StepNodeProps = NodeBase & {
  * place. It widens with its text up to a limit, then wraps and grows taller.
  */
 /** A card's title by itself, centred on the card; it keeps its screen size while the box fades away around it. */
-const TitleOnly = ({ text }: { text: string }) => (
+const TitleOnly = ({ text, date }: { text: string; date: string | null }) => (
   <span className="node__label" aria-hidden="true">
+    {date && <span className="node__label-date num">{formatDayKey(date)}</span>}
     {text}
   </span>
 );
 
-function StepNode({ node, label, at, nodeRef, linked, autoFocus, dropping, dragging, onPointerDown, onSave, onDelete }: StepNodeProps) {
+function StepNode({ node, label, labelDate, at, nodeRef, linked, autoFocus, dropping, dragging, onPointerDown, onSave, onDelete }: StepNodeProps) {
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description);
   useEffect(() => setTitle(node.title), [node.title]);
@@ -585,7 +591,7 @@ function StepNode({ node, label, at, nodeRef, linked, autoFocus, dropping, dragg
         />
       </span>
       <span className="node__count num">{linked === 0 ? 'No experiences yet' : `${linked} ${linked === 1 ? 'experience' : 'experiences'}`}</span>
-      <TitleOnly text={label} />
+      <TitleOnly text={label} date={labelDate} />
       <button className="node__x" type="button" aria-label={`Delete step ${node.title || 'untitled'}`} onClick={onDelete}>
         ×
       </button>
@@ -594,7 +600,7 @@ function StepNode({ node, label, at, nodeRef, linked, autoFocus, dropping, dragg
 }
 
 /** An experience: the focus session behind a step, and the files from it. Drag it onto a step to link them. */
-function ExperienceNode({ node, label, at, nodeRef, linked, dragging, onPointerDown, onDelete }: NodeBase & { linked: boolean }) {
+function ExperienceNode({ node, label, labelDate, at, nodeRef, linked, dragging, onPointerDown, onDelete }: NodeBase & { linked: boolean }) {
   const s = node.session;
   const files = s?.files ?? [];
   const shown = files.length > FILES_SHOWN ? files.slice(0, FILES_SHOWN - 1) : files;
@@ -623,7 +629,7 @@ function ExperienceNode({ node, label, at, nodeRef, linked, dragging, onPointerD
           {more > 0 && <span className="file file--more num">+{more}</span>}
         </span>
       )}
-      <TitleOnly text={label} />
+      <TitleOnly text={label} date={labelDate} />
       <button className="node__x" type="button" aria-label={`Remove experience ${s?.name ?? ''}`.trim()} onClick={onDelete}>
         ×
       </button>

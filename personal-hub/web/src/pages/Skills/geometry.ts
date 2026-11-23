@@ -164,16 +164,18 @@ export const TITLE_PX = 15;
 const TITLE_LINE = 1.3;
 /** Screen width a title wraps at. */
 export const TITLE_MAX_PX = 220;
+/** Screen size of the date set above a title. */
+export const DATE_PX = 11;
 
 /**
  * Where a link should end on a card at zoom `k` and `detail`: the card's own box when it is shown
  * whole, closing in on the title at its centre as the box fades (the title keeps its screen size).
  */
-export function anchorBox(b: Box, title: string, k: number, detail: number): Box {
+export function anchorBox(b: Box, title: string, k: number, detail: number, dated = false): Box {
   if (detail >= 1) return b;
   const perLine = Math.max(6, Math.floor(Math.min(TITLE_MAX_PX, b.w * k) / (TITLE_PX * 0.52)));
   const lines = Math.max(1, Math.ceil(title.length / perLine));
-  const h = (lines * TITLE_PX * TITLE_LINE + 8) / k;
+  const h = (lines * TITLE_PX * TITLE_LINE + (dated ? DATE_PX * TITLE_LINE + 3 : 0) + 8) / k;
   const label = { x: b.x, y: b.y + b.h / 2 - h / 2, w: b.w, h };
   const u = 1 - detail;
   return { x: b.x, w: b.w, y: b.y + (label.y - b.y) * u, h: b.h + (label.h - b.h) * u };
