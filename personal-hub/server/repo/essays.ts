@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { Essay, EssayColumn, EssaySummary } from '../../shared/types.ts';
+import { bodyOf, firstLineOf, plainTextOf, wordCountOf } from '../../shared/essayText.ts';
 import type { AppContext } from '../context.ts';
 import { indexDoc, removeDoc } from '../lib/search.ts';
 
@@ -24,11 +25,11 @@ type EssayRow = {
 };
 
 /** What a save carries. `column` alone moves the essay, leaving its text as it is. */
+// `plainText` and `wordCount` are accepted on the wire but never trusted: the stored
+// document is the source of truth, read through shared/essayText.ts.
 export type EssaySave = {
   title?: string;
   contentJson?: unknown;
-  plainText?: string;
-  wordCount?: number;
   column?: EssayColumn;
   baseUpdatedAt: string;
 };
@@ -43,17 +44,12 @@ export class StaleSaveError extends Error {
   }
 }
 
-function firstLine(plainText: string): string {
-  const line = plainText.split(/\r?\n/).find((l) => l.trim() !== '') ?? '';
-  return line.trim();
-}
-
 function toSummary(r: EssayRow): EssaySummary {
   return {
     id: r.id,
     column: r.column_key,
     title: r.title,
-    firstLine: firstLine(r.plain_text),
+    firstLine: firstLineOf(r.content_json),
     wordCount: r.word_count,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -152,8 +148,9 @@ export function saveEssay(ctx: AppContext, id: number, save: EssaySave): string 
     snapshotBeforeChange(ctx.db, row, now);
     const title = save.title ?? row.title;
     const contentJson = save.contentJson === undefined ? row.content_json : (JSON.stringify(save.contentJson) as string);
-    const plainText = save.plainText ?? row.plain_text;
-    const wordCount = save.wordCount ?? row.word_count;
+    // Text fields follow the document, so a save and a restore of the same document read the same.
+    const plainText = plainTextOf(contentJson);
+    const wordCount = wordCountOf(contentJson);
     const column = save.column ?? row.column_key;
 
     ctx.db
@@ -162,7 +159,7 @@ export function saveEssay(ctx: AppContext, id: number, save: EssaySave): string 
          WHERE id = ?`,
       )
       .run(column, title, contentJson, plainText, wordCount, now, id);
-    indexEssay(ctx.db, id, title, plainText);
+    indexEssay(ctx.db, id, title, bodyOf(contentJson));
     return now;
   });
 }
@@ -190,32 +187,15 @@ export function restoreSnapshot(ctx: AppContext, essayId: number, snapshotId: nu
     if (!found) throw new Error('No such snapshot');
 
     snapshotBeforeChange(ctx.db, row, now);
-    // The document keeps its text; wordCount and the first line follow it, as the web app sends them.
-    const plainText = wordsOf(found.content_json);
-    const wordCount = plainText === '' ? 0 : plainText.split(/\s+/).length;
+    // Restored through the same reading as a save: the text fields follow the document.
+    const plainText = plainTextOf(found.content_json);
+    const wordCount = wordCountOf(found.content_json);
     ctx.db
       .prepare('UPDATE essays SET content_json = ?, plain_text = ?, word_count = ?, updated_at = ? WHERE id = ?')
       .run(found.content_json, plainText, wordCount, now, essayId);
-    indexEssay(ctx.db, essayId, row.title, plainText);
+    indexEssay(ctx.db, essayId, row.title, bodyOf(found.content_json));
     return getEssay(ctx, essayId) as Essay;
   });
-}
-
-/** The text of every `text` node in a stored document, in order, one space between blocks. */
-function wordsOf(contentJson: string): string {
-  const out: string[] = [];
-  const walk = (node: unknown) => {
-    if (typeof node !== 'object' || node === null) return;
-    const { type, text, content } = node as { type?: unknown; text?: unknown; content?: unknown };
-    if (type === 'text' && typeof text === 'string') out.push(text);
-    if (Array.isArray(content)) content.forEach(walk);
-  };
-  try {
-    walk(JSON.parse(contentJson));
-  } catch {
-    return '';
-  }
-  return out.join(' ').trim();
 }
 
 /** Deletes the essay, its snapshots (cascade) and its search entry. */

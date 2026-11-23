@@ -1,6 +1,6 @@
 /* Essays: three columns inside one glass panel, ruled rather than boxed. Each
    column gathers and lifts cards dropped on it. Under 900px the columns become
-   tabs (.essays-page.is-narrow). */
+   tabs, and only the chosen column (.col.is-current) shows. */
 
 .essays-head + .essays__error { margin-top: var(--space-md); }
 .essays__error { margin-top: var(--space-sm); font-size: var(--text-sm); color: var(--color-accent-2); }

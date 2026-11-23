@@ -43,14 +43,8 @@ function parseSave(body: Record<string, unknown>): EssaySave | string {
     return 'wordCount must be a whole number of words';
   }
   if (column !== undefined && !isColumn(column)) return 'Column must be meditations, plans or insights';
-  return {
-    title: typeof title === 'string' ? title.trim() : undefined,
-    contentJson,
-    plainText,
-    wordCount: wordCount as number | undefined,
-    column,
-    baseUpdatedAt,
-  };
+  // plainText and wordCount pass the type check but go no further: the document is the source of truth.
+  return { title: typeof title === 'string' ? title.trim() : undefined, contentJson, column, baseUpdatedAt };
 }
 
 /** Mounted at `/api/essays`. */

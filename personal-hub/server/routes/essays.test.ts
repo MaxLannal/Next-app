@@ -16,10 +16,9 @@ const MINUTE = 60_000;
 /** Moves the clock `minutes` past the test's fixed start. */
 const at = (minutes: number) => t.setNow(new Date(Date.parse(TEST_NOW) + minutes * MINUTE).toISOString());
 
-const doc = (text: string) => ({
-  type: 'doc',
-  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
-});
+const para = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
+const doc = (text: string) => ({ type: 'doc', content: [para(text)] });
+const twoParagraphs = (first: string, second: string) => ({ type: 'doc', content: [para(first), para(second)] });
 
 async function create(column = 'meditations', title = ''): Promise<Essay> {
   const res = await t.req('POST', '/api/essays', { column });
@@ -103,18 +102,19 @@ it('saves with the current base', async () => {
   expect(updatedAt).toBe(new Date(Date.parse(TEST_NOW) + 5 * MINUTE).toISOString());
   expect(updatedAt).not.toBe(created.updatedAt);
 
+  // The first line and count come from the document; the wire's plainText and wordCount don't matter.
   const essay = (await (await t.req('GET', `/api/essays/${created.id}`)).json()) as Essay;
   expect(essay).toMatchObject({
     title: 'On attention',
     contentJson: doc('Stoic attention'),
     firstLine: 'Stoic attention',
-    wordCount: 5,
+    wordCount: 2,
     createdAt: TEST_NOW,
     updatedAt,
   });
 
   const [summary] = await list();
-  expect(summary).toMatchObject({ id: created.id, title: 'On attention', firstLine: 'Stoic attention', wordCount: 5 });
+  expect(summary).toMatchObject({ id: created.id, title: 'On attention', firstLine: 'Stoic attention', wordCount: 2 });
   expect(summary).not.toHaveProperty('contentJson');
 
   // Moves columns without touching the content; the list puts the newest change first.
@@ -219,13 +219,22 @@ it('keeps thirty', async () => {
 it('restore snapshots current first', async () => {
   const created = await create();
   at(1);
-  const first = await save(created.id, { title: 'First', contentJson: doc('First text'), plainText: 'First text', baseUpdatedAt: created.updatedAt });
+  const first = await save(created.id, {
+    title: 'First',
+    contentJson: twoParagraphs('First line', 'Then the rest of it'),
+    baseUpdatedAt: created.updatedAt,
+  });
   const firstAt = ((await first.json()) as { updatedAt: string }).updatedAt;
+  const saved = (await (await t.req('GET', `/api/essays/${created.id}`)).json()) as Essay;
   at(10);
-  const second = await save(created.id, { title: 'Second', contentJson: doc('Second text'), plainText: 'Second text', baseUpdatedAt: firstAt });
+  const second = await save(created.id, {
+    title: 'Second',
+    contentJson: twoParagraphs('Second line', 'Then more'),
+    baseUpdatedAt: firstAt,
+  });
   const secondAt = ((await second.json()) as { updatedAt: string }).updatedAt;
 
-  const [snapshot] = await snapshots(created.id); // holds "First"
+  const [snapshot] = await snapshots(created.id); // holds the first document
   expect(snapshot?.createdAt).toBe(secondAt); // taken before the save at 10 min
   const before = (await (await t.req('GET', `/api/essays/${created.id}`)).json()) as Essay;
 
@@ -237,11 +246,14 @@ it('restore snapshots current first', async () => {
   expect(restored).toMatchObject({
     id: created.id,
     title: 'Second',
-    contentJson: doc('First text'),
-    firstLine: 'First text',
-    wordCount: 2,
+    contentJson: twoParagraphs('First line', 'Then the rest of it'),
     createdAt: TEST_NOW,
   });
+  // The restored card reads exactly as it did when saved: the first line ends at the paragraph break.
+  expect(saved.firstLine).toBe('First line');
+  expect(restored.firstLine).toBe(saved.firstLine);
+  expect(restored.wordCount).toBe(saved.wordCount);
+  expect(restored.wordCount).toBe(7);
   expect(restored.updatedAt).toBe(new Date(Date.parse(TEST_NOW) + 20 * MINUTE).toISOString());
   expect(restored.updatedAt).not.toBe(secondAt);
 
@@ -253,7 +265,7 @@ it('restore snapshots current first', async () => {
   expect(after).toHaveLength(2);
   expect(after[0]?.createdAt).toBe(restored.updatedAt);
   expect(after[1]).toEqual(snapshot);
-  expect(before.contentJson).toEqual(doc('Second text'));
+  expect(before.contentJson).toEqual(twoParagraphs('Second line', 'Then more'));
 
   const missing = await t.req('POST', `/api/essays/${created.id}/snapshots/999/restore`);
   expect(missing.status).toBe(404);
@@ -269,7 +281,8 @@ it('search finds essay text', async () => {
   at(3);
   const res = await save(created.id, {
     title: 'Notes on attention',
-    plainText: 'on stoic attention',
+    contentJson: twoParagraphs('Notes', 'on stoic attention'),
+    plainText: 'ignored: the document is indexed',
     baseUpdatedAt: created.updatedAt,
   });
   expect(res.status).toBe(200);
@@ -280,7 +293,11 @@ it('search finds essay text', async () => {
 
   // Re-indexing replaces, never duplicates.
   at(9);
-  await save(created.id, { title: 'Renamed', plainText: 'on stoic attention', baseUpdatedAt: new Date(Date.parse(TEST_NOW) + 3 * MINUTE).toISOString() });
+  await save(created.id, {
+    title: 'Renamed',
+    contentJson: twoParagraphs('Notes', 'on stoic attention'),
+    baseUpdatedAt: new Date(Date.parse(TEST_NOW) + 3 * MINUTE).toISOString(),
+  });
   const again = search(t.db, 'stoic').filter((h) => h.kind === 'essay');
   expect(again).toHaveLength(1);
   expect(again[0]?.title).toBe('Renamed');
@@ -316,7 +333,7 @@ it('deletes an essay', async () => {
   const keep = await create();
   const drop = await create();
   at(2);
-  await save(drop.id, { plainText: 'gone words', baseUpdatedAt: drop.updatedAt });
+  await save(drop.id, { contentJson: doc('gone words'), baseUpdatedAt: drop.updatedAt });
 
   const res = await t.req('DELETE', `/api/essays/${drop.id}`);
   expect(res.status).toBe(204);

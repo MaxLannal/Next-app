@@ -59,6 +59,7 @@ export function EssaysPage() {
 
   const create = useMutation({
     mutationFn: (column: EssayColumn) => api<Essay>('/api/essays', { method: 'POST', json: { column } }),
+    onMutate: () => setError(null),
     onSuccess: (essay) => {
       const { contentJson: _doc, ...summary } = essay;
       queryClient.setQueryData<EssaySummary[]>(KEY, (rows) => [summary, ...(rows ?? [])]);

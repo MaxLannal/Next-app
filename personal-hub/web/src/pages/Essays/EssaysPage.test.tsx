@@ -5,7 +5,6 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Essay, EssaySummary } from '@shared/types.ts';
 import { EssaysPage } from './EssaysPage.tsx';
-import { plainTextOf, wordCountOf } from './essayText.ts';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -51,23 +50,6 @@ const columnOf = (label: string) => screen.getByRole('heading', { level: 3, name
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe('plainTextOf', () => {
-  it('reads one line per block and counts words', () => {
-    const doc = {
-      type: 'doc',
-      content: [
-        { type: 'paragraph', content: [{ type: 'text', text: 'First' }] },
-        { type: 'paragraph', content: [{ type: 'text', text: 'Two' }, { type: 'hardBreak' }, { type: 'text', text: 'lines' }] },
-        { type: 'paragraph', content: [] },
-      ],
-    };
-    expect(plainTextOf(doc)).toBe('First\nTwo\nlines');
-    expect(wordCountOf(plainTextOf(doc))).toBe(3);
-    expect(plainTextOf({ type: 'doc', content: [] })).toBe('');
-    expect(wordCountOf('   ')).toBe(0);
-  });
 });
 
 describe('EssaysPage', () => {
