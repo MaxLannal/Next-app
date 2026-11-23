@@ -30,6 +30,7 @@ export function Nav({ timerSlot }: NavProps) {
         <RailLink to="/essays" label="Essays" icon={<PenIcon />} />
         <RailLink to="/database" label="Database" icon={<DatabaseIcon />} />
         <RailLink to="/skills" label="Skills" icon={<PyramidIcon />} />
+        <RailLink to="/traces" label="Traces" icon={<GlobeIcon />} />
       </nav>
       <div className="rail__end">
         {timerSlot}
@@ -99,6 +100,16 @@ function PyramidIcon() {
     <Icon>
       <path d="M12 3.5L21 20H3z" />
       <path d="M7.4 12h9.2M5.2 16h13.6" />
+    </Icon>
+  );
+}
+
+/** Traces: a globe with a pin on it. */
+function GlobeIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5s1.2-6.2 3.6-8.5z" />
     </Icon>
   );
 }

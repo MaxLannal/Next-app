@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router';
 import { ChatSidebar } from './components/chat/ChatSidebar.tsx';
 import { LoginGate } from './components/LoginGate.tsx';
@@ -10,6 +10,9 @@ import { EssaysPage } from './pages/Essays/EssaysPage.tsx';
 import { EssayEditor } from './pages/Essays/editor/EssayEditor.tsx';
 import { SettingsPage } from './pages/Settings/SettingsPage.tsx';
 import { SkillsPage } from './pages/Skills/SkillsPage.tsx';
+
+// The globe brings Mapbox with it, so its page loads only when it is opened.
+const TracesPage = lazy(() => import('./pages/Traces/TracesPage.tsx'));
 
 export function App() {
   const { pathname } = useLocation();
@@ -31,6 +34,14 @@ export function App() {
           <Route path="/database" element={<DatabasePage />} />
           <Route path="/database/session/:id" element={<SessionPage />} />
           <Route path="/skills" element={<SkillsPage />} />
+          <Route
+            path="/traces"
+            element={
+              <Suspense fallback={<div className="traces" />}>
+                <TracesPage />
+              </Suspense>
+            }
+          />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

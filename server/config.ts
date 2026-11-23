@@ -9,6 +9,8 @@ export type HubConfig = {
   hubToken: string;
   anthropic: { baseURL: string | null; authToken: string | null; model: string };
   github: { repo: string | null };
+  /** The Mapbox access token the Traces globe draws its tiles with. */
+  mapbox: { token: string | null };
   keepAwake: boolean;
   sleepTargetHours: number;
 };
@@ -41,6 +43,7 @@ function defaults(): HubConfig {
     hubToken: randomSecret(),
     anthropic: { baseURL: null, authToken: null, model: 'claude-opus-5-5' },
     github: { repo: null },
+    mapbox: { token: null },
     keepAwake: false,
     sleepTargetHours: 8,
   };

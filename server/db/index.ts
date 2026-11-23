@@ -7,6 +7,7 @@ const MIGRATIONS = [
   readFileSync(new URL('./skills.sql', import.meta.url), 'utf8'), // v2: the skill tracker
   readFileSync(new URL('./skills-v3.sql', import.meta.url), 'utf8'), // v3: completion dates, stage names, stage-relative y
   readFileSync(new URL('./goals-rank.sql', import.meta.url), 'utf8'), // v4: goals keep the order they're dragged into
+  readFileSync(new URL('./traces.sql', import.meta.url), 'utf8'), // v5: traces, the places on the globe
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 

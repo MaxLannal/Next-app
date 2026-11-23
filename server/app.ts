@@ -20,6 +20,7 @@ import { sleepIngestRoutes, sleepRoutes } from './routes/sleep.ts';
 import { goalRoutes } from './routes/goals.ts';
 import { chatRoutes } from './routes/chat.ts';
 import { skillRoutes } from './routes/skills.ts';
+import { traceRoutes } from './routes/traces.ts';
 
 const WEB_DIST = fileURLToPath(new URL('../web/dist', import.meta.url));
 
@@ -47,6 +48,7 @@ export function createApp(ctx: AppContext): Hono {
   app.route('/api/settings', settingsRoutes(ctx));
   app.route('/api/chat', chatRoutes(ctx));
   app.route('/api/skills', skillRoutes(ctx));
+  app.route('/api/traces', traceRoutes(ctx));
 
   app.use('*', webApp(WEB_DIST));
   return app;

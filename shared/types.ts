@@ -346,3 +346,23 @@ export type SkillNode = {
 export type SkillLink = { id: number; stepId: number; experienceId: number };
 
 export type SkillBoard = { skill: Skill; nodes: SkillNode[]; links: SkillLink[] };
+
+// --- Traces: the places on the globe ---
+
+export type TracePhoto = { id: number; url: string };
+
+export type Trace = {
+  id: number;
+  lng: number;
+  lat: number;
+  city: string;
+  country: string;
+  /** The day it happened, `YYYY-MM-DD`, if given. */
+  day: string | null;
+  /** What happened there. */
+  notes: string;
+  createdAt: string;
+  photos: TracePhoto[];
+  /** Essays written about it. */
+  essays: { id: number; title: string }[];
+};

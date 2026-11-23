@@ -14,7 +14,7 @@ describe('the side rail', () => {
   it('has one named icon link per page, Settings at the foot, and the timer slot', () => {
     renderAt('/');
     const main = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(main).getAllByRole('link').map((a) => a.getAttribute('aria-label'))).toEqual(['Dashboard', 'Essays', 'Database', 'Skills']);
+    expect(within(main).getAllByRole('link').map((a) => a.getAttribute('aria-label'))).toEqual(['Dashboard', 'Essays', 'Database', 'Skills', 'Traces']);
     expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/settings');
     expect(screen.getByRole('link', { name: 'Next, dashboard' }).getAttribute('href')).toBe('/');
     expect(screen.getByTestId('timer')).toBeTruthy();
