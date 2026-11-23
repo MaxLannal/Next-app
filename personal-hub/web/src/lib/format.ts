@@ -41,3 +41,10 @@ export function formatShortDate(dayKeyOrIso: string): string {
   const d = key ? new Date(Number(key[1]), Number(key[2]) - 1, Number(key[3])) : new Date(dayKeyOrIso);
   return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
+
+/** `"22 Nov 2026"`. A day key (`2026-11-22`) is that calendar day; an instant is its local day. */
+export function formatDayKey(dayKeyOrIso: string): string {
+  const key = DAY_KEY.exec(dayKeyOrIso);
+  const d = key ? new Date(Number(key[1]), Number(key[2]) - 1, Number(key[3])) : new Date(dayKeyOrIso);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}

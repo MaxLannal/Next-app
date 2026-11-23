@@ -7,6 +7,7 @@ import { DataBackups, formatDay } from './DataBackups.tsx';
 import { formatWhen, GitHubSetup } from './GitHubSetup.tsx';
 import { PhoneAccess } from './PhoneAccess.tsx';
 import { SettingsPage } from './SettingsPage.tsx';
+import { SleepSetup } from './SleepSetup.tsx';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -97,6 +98,33 @@ describe('PhoneAccess', () => {
   });
 });
 
+describe('the sleep history import', () => {
+  it('posts the export to the hub’s ingest route and shows how many samples it added', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async () => json({ inserted: 1204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SleepSetup settings={settings} />);
+
+    const file = new File(['<HealthData></HealthData>'], 'export.xml', { type: 'application/xml' });
+    await user.upload(screen.getByLabelText('Upload a Health export'), file);
+
+    await waitFor(() => expect(screen.getByText('Added 1204 samples')).toBeTruthy());
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(path).toBe('/api/ingest/health-export');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeInstanceOf(FormData);
+    expect((init.body as FormData).get('file')).toBeInstanceOf(File);
+  });
+
+  it('says plainly when the hub couldn’t read the export', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn(async () => json({ error: 'Could not read the export: bad XML' }, 400)));
+    render(<SleepSetup settings={settings} />);
+    await user.upload(screen.getByLabelText('Upload a Health export'), new File(['x'], 'export.xml'));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Could not read the export: bad XML');
+  });
+});
+
 describe('the other sections', () => {
   it('GitHub shows the status and offers sync once connected', async () => {
     render(
@@ -130,9 +158,11 @@ describe('the other sections', () => {
   });
 
   it('formats days and times the Dusk way', () => {
-    expect(formatDay('2026-11-22')).toBe('Nov 22, 2026');
+    expect(formatDay('2026-11-22')).toBe('22 Nov 2026');
+    expect(formatDay(null)).toBe('No backup yet');
     expect(formatWhen(null)).toBe('Never');
-    const now = new Date('2026-11-22T18:00:00.000Z');
-    expect(formatWhen('2026-11-22T20:02:00.000Z', now)).toMatch(/^\d\d:\d\d$/);
+    const now = new Date(2026, 10, 22, 18, 0);
+    expect(formatWhen(new Date(2026, 10, 22, 20, 2).toISOString(), now)).toBe('20:02');
+    expect(formatWhen(new Date(2026, 10, 19, 14, 2).toISOString(), now)).toBe('Thu 19 Nov, 14:02');
   });
 });

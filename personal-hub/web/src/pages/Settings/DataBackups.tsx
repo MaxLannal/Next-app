@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../api.ts';
 import { Panel } from '../../components/ui/Panel.tsx';
+import { formatDayKey } from '../../lib/format.ts';
 import { messageOf } from './useSettings.ts';
 
 type DataBackupsProps = {
@@ -45,8 +46,8 @@ export function DataBackups({ dataDir, lastBackupAt, onBackedUp }: DataBackupsPr
         </div>
       </dl>
       <p className="settings-note">
-        The hub backs up once a day and keeps the last 14. A backup copies everything in the folder: the database, attachments and
-        the repository.
+        The hub backs the database up once a day into one file per day, and keeps the newest 14. Attachments and the GitHub clone
+        live in the same folder but aren’t copied.
       </p>
       <div className="settings-row">
         <button className="btn btn-ghost btn-sm" type="button" onClick={() => void backUp()} disabled={busy}>
@@ -65,14 +66,7 @@ export function DataBackups({ dataDir, lastBackupAt, onBackedUp }: DataBackupsPr
   );
 }
 
-/** "Nov 22, 2026" from a day key; "No backup yet" before the first. */
+/** "22 Nov 2026" from a day key; "No backup yet" before the first. */
 export function formatDay(day: string | null): string {
-  if (day === null) return 'No backup yet';
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+  return day === null ? 'No backup yet' : formatDayKey(day);
 }

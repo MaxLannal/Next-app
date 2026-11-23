@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { GitStatus } from '@shared/types.ts';
 import { api } from '../../api.ts';
 import { Panel } from '../../components/ui/Panel.tsx';
+import { formatShortDate, formatTime } from '../../lib/format.ts';
 import { messageOf } from './useSettings.ts';
 
 const OWNER_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -113,8 +114,6 @@ export function GitHubSetup({ github }: { github: GitStatus }) {
 /** The time alone when it was today, else the short day before it; "Never" before the first sync. */
 export function formatWhen(iso: string | null, now = new Date()): string {
   if (iso === null) return 'Never';
-  const at = new Date(iso);
-  const time = at.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  if (at.toDateString() === now.toDateString()) return time;
-  return `${at.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}, ${time}`;
+  const time = formatTime(iso);
+  return new Date(iso).toDateString() === now.toDateString() ? time : `${formatShortDate(iso)}, ${time}`;
 }

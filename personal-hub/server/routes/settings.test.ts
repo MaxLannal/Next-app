@@ -92,8 +92,37 @@ it('remote reads see the rest of the settings', async () => {
   expect(body.github).toMatchObject({ configured: true, repo: 'max/work-journal' });
 });
 
-it('updates the time zone and sleep target', async () => {
+it('a Mac that can’t start keep-awake says so, and the config keeps its real state', async () => {
+  t.fakes.mac.keepAwake = () => {
+    throw new Error('caffeinate didn’t start');
+  };
+  const res = await t.req('PATCH', '/api/settings', { keepAwake: true });
+  expect(res.status).toBe(503);
+  expect((await res.json()) as Record<string, unknown>).toMatchObject({ error: expect.stringContaining('caffeinate') });
+  expect(t.config.get().keepAwake).toBe(false);
+  const view = await get();
+  expect(view.body.keepAwake).toBe(false);
+});
+
+it('the phone may change the time zone and sleep target, but not the passcode or keep-awake', async () => {
   const phone = await loggedIn(t);
+
+  const zone = await t.req('PATCH', '/api/settings', { timeZone: 'America/Chicago', sleepTargetHours: 7.5 }, phone);
+  expect(zone.status).toBe(200);
+  expect(t.config.get()).toMatchObject({ timeZone: 'America/Chicago', sleepTargetHours: 7.5 });
+
+  for (const patch of [{ passcode: '654321' }, { keepAwake: true }, { timeZone: 'Europe/Berlin', passcode: '654321' }]) {
+    const res = await t.req('PATCH', '/api/settings', patch, phone);
+    expect(res.status).toBe(403);
+  }
+  expect(t.config.get()).toMatchObject({ passcodeHash: expect.any(String), keepAwake: false, timeZone: 'America/Chicago' });
+
+  const local = await t.req('PATCH', '/api/settings', { passcode: '654321' });
+  expect(local.status).toBe(200);
+  expect(await login('654321', REMOTE_HEADERS)).toBe(200);
+});
+
+it('updates the time zone and sleep target', async () => {
   const bad = await t.req('PATCH', '/api/settings', { sleepTargetHours: 0 });
   expect(bad.status).toBe(400);
   const badZone = await t.req('PATCH', '/api/settings', { timeZone: 'Mars/Olympus' });
@@ -107,7 +136,6 @@ it('updates the time zone and sleep target', async () => {
 });
 
 it('backup makes a dated copy and reports it', async () => {
-  const phone = await loggedIn(t);
   t.setNow('2026-11-22T18:00:00.000Z');
   const res = await t.req('POST', '/api/settings/backup');
   expect(res.status).toBe(200);

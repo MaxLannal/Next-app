@@ -94,8 +94,15 @@ export function settingsRoutes(ctx: AppContext): Hono {
 
       if (wantsPasscode) ctx.config.update({ passcodeHash: await hashPasscode(passcode as string) });
       if (wantsKeepAwake) {
+        // Start caffeinate first: a Mac that can't start it keeps its real state in the config, not a hopeful one.
+        const was = ctx.config.get().keepAwake;
+        try {
+          ctx.mac.keepAwake(keepAwake as boolean);
+        } catch (err) {
+          ctx.config.update({ keepAwake: was });
+          return c.json({ error: `Couldn’t ${keepAwake === true ? 'keep' : 'stop keeping'} the Mac awake: ${(err as Error).message}` }, 503);
+        }
         ctx.config.update({ keepAwake: keepAwake as boolean });
-        ctx.mac.keepAwake(keepAwake as boolean);
       }
       if (timeZone !== undefined || sleepTargetHours !== undefined) {
         ctx.config.update({

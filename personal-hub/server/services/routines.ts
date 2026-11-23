@@ -1,5 +1,5 @@
 import type { AppContext } from '../context.ts';
-import { backupNow } from './backup.ts';
+import { backupLive } from './backup.ts';
 
 export const BACKUP_EVERY_MS = 24 * 60 * 60_000;
 
@@ -26,7 +26,7 @@ export function startRoutines(
 
   const backup = () => {
     try {
-      backupNow(ctx);
+      backupLive(ctx);
     } catch (err) {
       log(`Backup failed: ${(err as Error).message}`);
     }

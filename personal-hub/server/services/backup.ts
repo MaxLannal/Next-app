@@ -25,13 +25,33 @@ export function dayKey(at: Date, timeZone: string): string {
  * Returns the backup's full path.
  */
 export function backupNow(ctx: AppContext): string {
-  const dir = ctx.paths.backupsDir;
-  const file = join(dir, `hub-${dayKey(ctx.now(), ctx.timeZone())}.db`);
-  // VACUUM INTO won't write over a file, so today's earlier backup is replaced first.
+  return backupInto(
+    ctx.db,
+    ctx.paths.backupsDir,
+    dayKey(ctx.now(), ctx.timeZone()),
+    (file) => ctx.db.exec(`VACUUM INTO '${file.replaceAll("'", "''")}'`),
+  );
+}
+
+/** The day's path, `VACUUM INTO` it (over today's earlier file, which VACUUM INTO refuses to overwrite), then prune. */
+function backupInto(db: { exec(sql: string): void }, dir: string, day: string, write: (file: string) => void): string {
+  const file = join(dir, `hub-${day}.db`);
   if (existsSync(file)) unlinkSync(file);
-  ctx.db.exec(`VACUUM INTO '${file.replaceAll("'", "''")}'`);
+  write(file);
   prune(dir);
   return file;
+}
+
+/**
+ * The daily routine's backup, while the hub has the database open and can't
+ * `VACUUM INTO` its own file: copies `hub.db` with its `-wal` and `-shm` into
+ * the same day's name (replacing today's earlier copy), then prunes.
+ */
+export function backupLive(ctx: AppContext): string {
+  const dir = ctx.paths.backupsDir;
+  return backupInto(ctx.db, dir, dayKey(ctx.now(), ctx.timeZone()), (file) => {
+    backupCopy(ctx.paths.dbFile, file);
+  });
 }
 
 /** The day of the newest backup, or null when there is none. */
@@ -61,9 +81,13 @@ function prune(dir: string): void {
 }
 
 /**
- * Writes the database into the day's backup file by copying it together with
- * `-wal` and `-shm`, the way the live hub runs (WAL). `sqlite3 file 'VACUUM
- * INTO …'` does the same on the command line for a hub that isn't running.
+ * Writes the database into `file` by copying it together with `-wal` and
+ * `-shm`. The live hub runs in WAL mode, so its newest pages can sit in `-wal`;
+ * a copy without that file, or one taken while the `-wal` is replaced halfway
+ * through, can be inconsistent. The three files are copied in the order
+ * database, `-shm`, `-wal`, which suits SQLite: a commit lands in `-wal` (and a
+ * checkpoint copies back to the database) before `-wal` is reset, so the
+ * database's copy is the oldest of the three.
  */
 export function backupCopy(dbFile: string, file: string): string {
   for (const suffix of ['-wal', '-shm']) if (existsSync(file + suffix)) unlinkSync(file + suffix);

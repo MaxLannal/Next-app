@@ -1,6 +1,7 @@
 import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SettingsView } from '@shared/types.ts';
 import { api, ApiError } from '../../api.ts';
+import { formatTime } from '../../lib/format.ts';
 
 /** What Settings reads and writes; the sections share one query, so a change shows everywhere. */
 export const settingsQuery = queryOptions({
@@ -34,5 +35,5 @@ export const messageOf = (err: unknown, fallback: string) =>
 
 /** "Saved 14:02", 24-hour, the hub's own voice. */
 export function savedAt(now: Date): string {
-  return `Saved ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+  return `Saved ${formatTime(now.toISOString())}`;
 }

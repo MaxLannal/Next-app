@@ -1,11 +1,12 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import type { SettingsView } from '@shared/types.ts';
-import { api, ApiError } from '../../api.ts';
+import { api } from '../../api.ts';
 import { Panel } from '../../components/ui/Panel.tsx';
 import { CopyField } from './CopyField.tsx';
 import { messageOf } from './useSettings.ts';
 
-type ImportResult = { imported: number; nights: number };
+/** `POST /api/ingest/health-export` (Task 12): how many samples it added. */
+type ImportResult = { inserted: number };
 
 /** The Shortcut, step by step, then the URL and token it needs and the one-off history import. */
 export function SleepSetup({ settings }: { settings: SettingsView }) {
@@ -50,7 +51,7 @@ export function SleepSetup({ settings }: { settings: SettingsView }) {
   );
 }
 
-/** Apple Health's export.xml, uploaded once to backfill the nights before the Shortcut existed. */
+/** Apple Health's export (the zip or its export.xml), uploaded once to backfill the nights before the Shortcut existed. */
 function HistoryImport() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -66,15 +67,9 @@ function HistoryImport() {
     try {
       const body = new FormData();
       body.append('file', file);
-      setResult(await api<ImportResult>('/api/health/import', { method: 'POST', body }));
+      setResult(await api<ImportResult>('/api/ingest/health-export', { method: 'POST', body }));
     } catch (err) {
-      // The import endpoint is Task 12's; until it lands, say so plainly.
-      const notThere = err instanceof ApiError && (err.status === 404 || err.status === 405);
-      setError(
-        notThere
-          ? 'The history import isn’t part of this build yet — the Shortcut alone fills the nights from today on.'
-          : messageOf(err, 'Couldn’t read that export — try again'),
-      );
+      setError(messageOf(err, 'Couldn’t read that export — try again'));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -83,22 +78,25 @@ function HistoryImport() {
 
   return (
     <div className="import">
-      <p className="settings-note">Past nights, once: in Health, tap your picture, Export All Health Data, and pick the export.xml here.</p>
+      <p className="settings-note">
+        Past nights, once: in Health, tap your picture, Export All Health Data, and pick the export (the .zip or its export.xml)
+        here.
+      </p>
       <div className="import__row">
         <label className="btn btn-ghost" htmlFor="sleep-import">
-          {busy ? 'Reading…' : 'Upload export.xml'}
+          {busy ? 'Reading…' : 'Upload a Health export'}
         </label>
         <input
           ref={inputRef}
           id="sleep-import"
           className="visually-hidden"
           type="file"
-          accept=".xml,application/xml,text/xml"
+          accept=".xml,.zip,application/xml,text/xml,application/zip"
           disabled={busy}
           onChange={(e) => void upload(e)}
         />
         <span className="settings-status" role="status">
-          {result !== null ? `Read ${result.imported} samples into ${result.nights} nights` : ''}
+          {result !== null ? `Added ${result.inserted} ${result.inserted === 1 ? 'sample' : 'samples'}` : ''}
         </span>
       </div>
       {error !== null && (
