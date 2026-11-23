@@ -23,6 +23,9 @@ const RANGES = [
 ];
 const MAX_COUNT = 10000;
 
+/** The panel never filters by kind, so every reply carries both series. */
+type FullReply = ExerciseReply & { series: Record<ExerciseKind, ExerciseSeries> };
+
 const messageOf = (err: unknown, fallback: string) => (err instanceof ApiError && err.status !== 0 ? err.message : fallback);
 const queryKey = (range: Range) => ['exercise', range];
 const count = (v: number) => v.toLocaleString('en-US');
@@ -39,8 +42,14 @@ export function ExercisePanel() {
   const [busy, setBusy] = useState<ExerciseKind | null>(null);
   const query = useQuery({
     queryKey: queryKey(range),
-    queryFn: ({ signal }) => api<ExerciseReply>(`/api/exercise?range=${range}`, { signal }),
+    queryFn: ({ signal }) => api<FullReply>(`/api/exercise?range=${range}`, { signal }),
   });
+
+  const rows = query.data;
+  // Only a response for the range on screen draws bars; until it lands, the charts wait.
+  // (After midnight a new key is fetched at once, so a stale one is never left over.)
+  const series = query.isFetching ? undefined : query.data?.series;
+  const today = rows === undefined ? undefined : (kind: ExerciseKind) => rows.today[kind] ?? 0;
 
   // Today's counts don't change with the range, so a logged set moves them in every cached range at once.
   const bump = (kind: ExerciseKind, delta: number) => {
@@ -49,6 +58,7 @@ export function ExercisePanel() {
     );
   };
 
+  // The server is the source of truth; the optimistic bump stands until this settles.
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['exercise'] });
 
   const log = async (kind: ExerciseKind, amount: number): Promise<boolean> => {
@@ -57,7 +67,7 @@ export function ExercisePanel() {
     bump(kind, amount);
     try {
       await api('/api/exercise', { method: 'POST', json: { kind, count: amount } });
-      await refresh();
+      void refresh();
       return true;
     } catch (err) {
       bump(kind, -amount);
@@ -72,18 +82,16 @@ export function ExercisePanel() {
     setError(null);
     try {
       await api(`/api/exercise/last?kind=${kind}`, { method: 'DELETE' });
-      await refresh();
+      void refresh();
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setError('Nothing logged today to undo');
       else setError(messageOf(err, 'Couldn’t undo that — retry'));
     }
   };
 
-  const reply = query.data;
-
   return (
     <Panel title="Push-ups and squats" className="exercise">
-      {query.isError && reply === undefined ? (
+      {query.isError && rows === undefined ? (
         <EmptyState
           title="Couldn’t load your sets"
           line={messageOf(query.error, 'The hub didn’t answer.')}
@@ -99,9 +107,8 @@ export function ExercisePanel() {
             {KINDS.map(({ kind, label }) => (
               <ExerciseRow
                 key={kind}
-                kind={kind}
                 label={label}
-                today={reply?.today[kind] ?? 0}
+                today={today?.(kind) ?? 0}
                 busy={busy === kind}
                 onLog={(amount) => void log(kind, amount)}
                 onUndo={() => void undo(kind)}
@@ -122,12 +129,10 @@ export function ExercisePanel() {
             {KINDS.map(({ kind, chart }) => (
               <section key={kind} className="ex-chart" aria-label={chart}>
                 <h3 className="ex-chart__title">{chart}</h3>
-                {reply === undefined ? (
-                  <p className="ex-chart__wait" role="status">
-                    {query.isLoading ? 'Loading…' : ''}
-                  </p>
+                {series === undefined ? (
+                  <p className="ex-chart__wait">Loading…</p>
                 ) : (
-                  <ChartBody series={reply.series[kind]} range={range} name={chart} />
+                  <ChartBody series={series[kind]} range={range} name={chart} />
                 )}
               </section>
             ))}
@@ -139,7 +144,6 @@ export function ExercisePanel() {
 }
 
 type RowProps = {
-  kind: ExerciseKind;
   label: string;
   today: number;
   busy: boolean;
@@ -147,7 +151,7 @@ type RowProps = {
   onUndo: () => void;
 };
 
-function ExerciseRow({ kind, label, today, busy, onLog, onUndo }: RowProps) {
+function ExerciseRow({ label, today, busy, onLog, onUndo }: RowProps) {
   const id = useId();
   const [draft, setDraft] = useState('');
   const amount = /^\d+$/.test(draft) ? Number(draft) : NaN;
@@ -214,18 +218,18 @@ function ExerciseRow({ kind, label, today, busy, onLog, onUndo }: RowProps) {
           Undo last
         </button>
       </span>
-      <span className="visually-hidden" role="status">
-        {busy ? `Saving ${label.toLowerCase()}…` : ''}
-      </span>
-      {/* `kind` is not read here; it names the request and keys the row. */}
-      <span hidden data-kind={kind} />
+      {busy && (
+        <span className="visually-hidden" role="status">
+          Saving {label.toLowerCase()}…
+        </span>
+      )}
     </li>
-
   );
 }
 
-function ChartBody({ series, range, name }: { series: ExerciseSeries | undefined; range: Range; name: string }) {
-  if (series === undefined || series.total === 0) {
+/** One exercise's chart and tally. The panel draws this only for a kind the reply has. */
+function ChartBody({ series, range, name }: { series: ExerciseSeries; range: Range; name: string }) {
+  if (series.total === 0) {
     return <EmptyState title="Nothing yet" line="Add a set above and the bars fill in." />;
   }
   return (

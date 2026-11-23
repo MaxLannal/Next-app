@@ -132,15 +132,61 @@ describe('ExercisePanel', () => {
 
   it('undo deletes the last of today', async () => {
     const user = userEvent.setup();
+    let undos = 0;
     const fetchMock = stubHub({
-      'GET /api/exercise?range=day': () => json(reply()),
-      'DELETE /api/exercise/last?kind=pushups': () => new Response(null, { status: 204 }),
+      'GET /api/exercise?range=day': () => json(reply({ pushups: undos === 0 ? 45 : 35 })),
+      'DELETE /api/exercise/last?kind=pushups': () => {
+        undos++;
+        return new Response(null, { status: 204 });
+      },
     });
     renderPanel();
     await waitFor(() => expect(within(pushupRow()).getByText('45')).toBeTruthy());
 
     await user.click(within(pushupRow()).getByRole('button', { name: 'Undo last' }));
-    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true));
+    // The refresh after the DELETE brings the reduced total into view.
+    await waitFor(() => expect(within(pushupRow()).getByText('35')).toBeTruthy());
+    expect(within(pushupRow()).queryByText('45')).toBeNull();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true);
+  });
+
+  it('never shows the old range’s bars under a new range', async () => {
+    const user = userEvent.setup();
+    let answerWeek: (res: Response) => void = () => {};
+    stubHub({
+      'GET /api/exercise?range=day': () => json(reply()),
+      'GET /api/exercise?range=week': () => new Promise((resolve) => (answerWeek = resolve)),
+    });
+    renderPanel();
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Push-ups by day' })).toBeTruthy());
+
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    // While the week is in flight, the day chart must not stand in for it.
+    expect(screen.queryByRole('img', { name: 'Push-ups by day' })).toBeNull();
+    expect(screen.queryByRole('img', { name: 'Push-ups by week' })).toBeNull();
+
+    const week = reply();
+    week.series.pushups = { buckets: Array.from({ length: 7 }, (_, i) => ({ label: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i], value: 0 })), total: 45, dailyAverage: 45 / 7 };
+    answerWeek(json(week));
+    expect(await screen.findByRole('img', { name: 'Push-ups by week' })).toBeTruthy();
+  });
+
+  it('re-enables quick adds as soon as the post resolves', async () => {
+    const user = userEvent.setup();
+    let answerPost: (res: Response) => void = () => {};
+    stubHub({
+      'GET /api/exercise?range=day': () => json(reply()),
+      'POST /api/exercise': () => new Promise((resolve) => (answerPost = resolve)),
+    });
+    renderPanel();
+    await waitFor(() => expect(within(pushupRow()).getByText('45')).toBeTruthy());
+
+    const plus = within(pushupRow()).getByRole('button', { name: '+5' }) as HTMLButtonElement;
+    await user.click(plus);
+    expect(plus.disabled).toBe(true);
+    answerPost(json({ kind: 'pushups', count: 5 }, 201));
+    // The refresh runs in the background; the buttons don't wait for it.
+    await waitFor(() => expect(plus.disabled).toBe(false));
   });
 
   it('says so when there is nothing to undo', async () => {
