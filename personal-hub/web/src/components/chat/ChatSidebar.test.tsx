@@ -52,7 +52,9 @@ function stubWidth(desktop: boolean) {
   );
 }
 
-function renderSidebar(path = '/') {
+/** Renders the chat at `path`; `open` (the default) starts it open, as a saved choice would. */
+function renderSidebar(path = '/', { open = true }: { open?: boolean } = {}) {
+  if (open) localStorage.setItem('hub:chat-open', '1');
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -64,11 +66,6 @@ function renderSidebar(path = '/') {
 }
 
 const bodyOf = (init?: RequestInit) => JSON.parse(String(init?.body)) as Record<string, unknown>;
-
-function setWindowWidth(width: number) {
-  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
-  window.dispatchEvent(new Event('resize'));
-}
 
 /** An SSE reply that sends `first`, then stays open until the request is aborted. */
 function openStream(init: RequestInit | undefined, first: ChatEvent[] = []): Response {
@@ -87,12 +84,9 @@ const QUIET = { 'GET /api/chat/status': () => json(READY), 'GET /api/chat/conver
 beforeEach(() => {
   localStorage.clear();
   stubWidth(true);
-  setWindowWidth(1600);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
-  setWindowWidth(1024);
-  document.documentElement.style.removeProperty('--chat-space');
 });
 
 describe('ChatSidebar', () => {
@@ -102,8 +96,6 @@ describe('ChatSidebar', () => {
     expect(await screen.findByText('Ask about your goals, sessions or essays')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'How far am I on my goals?' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /\?$/ })).toHaveLength(3);
-    // The page keeps room for the panel.
-    expect(document.documentElement.style.getPropertyValue('--chat-space')).not.toBe('');
   });
 
   it('says so and points to Settings when the gateway is not set up', async () => {
@@ -249,67 +241,88 @@ describe('ChatSidebar', () => {
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
   });
 
-  it('collapses to a rail and opens again', async () => {
-    stubHub({ 'GET /api/chat/status': () => json(READY), 'GET /api/chat/conversations': () => json(NO_CONVERSATIONS) });
-    renderSidebar();
-    await userEvent.click(await screen.findByRole('button', { name: 'Collapse chat' }));
-    expect(screen.queryByLabelText('Ask Claude')).toBeNull();
-    expect(localStorage.getItem('hub:chat-open')).toBe('0');
-    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('72px');
-    await userEvent.click(screen.getByRole('button', { name: 'Open chat' }));
-    expect(await screen.findByLabelText('Ask Claude')).toBeTruthy();
-  });
-
-  it('starts as the rail on a window under 1440 px, unless the user chose otherwise', async () => {
-    setWindowWidth(1280);
-    stubHub(QUIET);
-    const first = renderSidebar();
-    expect(await screen.findByRole('button', { name: 'Open chat' })).toBeTruthy();
-    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('72px');
-    first.unmount();
-
-    localStorage.setItem('hub:chat-open', '1');
-    renderSidebar();
-    expect(await screen.findByLabelText('Ask Claude')).toBeTruthy();
-  });
-
-  it('floats over the page while less than 1040 px of window would be left, and makes room again when there is', async () => {
-    localStorage.setItem('hub:chat-open', '1');
-    setWindowWidth(1280);
-    stubHub(QUIET);
-    renderSidebar();
-    const panel = (await screen.findByRole('complementary', { name: 'Chat' })) as HTMLElement;
-    expect(panel.className).toContain('chat--over');
-    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('');
-
-    act(() => setWindowWidth(1600));
-    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('424px'));
-    expect(screen.getByRole('complementary', { name: 'Chat' }).className).not.toContain('chat--over');
-  });
-
-  it('floats the rail too on a window under 1088 px', async () => {
-    setWindowWidth(1000);
-    stubHub(QUIET);
-    renderSidebar();
-    expect(await screen.findByRole('button', { name: 'Open chat' })).toBeTruthy();
-    expect(screen.getByRole('complementary', { name: 'Chat' }).className).toContain('chat--over');
-    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('');
-  });
-
-  it('opens as a sheet from the Ask pill on a narrow screen', async () => {
+  it('opens as a sheet from the pill on a narrow screen', async () => {
     stubWidth(false);
-    stubHub({ 'GET /api/chat/status': () => json(READY), 'GET /api/chat/conversations': () => json(NO_CONVERSATIONS) });
-    renderSidebar();
+    stubHub(QUIET);
+    renderSidebar('/', { open: false });
     expect(screen.queryByLabelText('Ask Claude')).toBeNull();
-    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Chat' }));
     const dialog = await screen.findByRole('dialog', { name: 'Chat' });
     expect(dialog).toBeTruthy();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Ask Claude')));
 
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Chat' })));
+  });
+});
+
+describe('the pill and the overlay', () => {
+  it('starts closed as the pill alone, and never pads the page', async () => {
+    stubHub(QUIET);
+    renderSidebar('/', { open: false });
+    const pill = screen.getByRole('button', { name: 'Chat' });
+    expect(pill.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(screen.queryByLabelText('Ask Claude')).toBeNull();
+    expect(document.body.style.paddingRight).toBe('');
+    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('');
+
+    await userEvent.click(pill);
+    expect(await screen.findByRole('complementary', { name: 'Chat' })).toBeTruthy();
+    expect(document.body.style.paddingRight).toBe('');
+    expect(document.documentElement.style.getPropertyValue('--chat-space')).toBe('');
+  });
+
+  it('opens over the page from the pill; × and Esc close it, with focus back on the pill', async () => {
+    stubHub(QUIET);
+    renderSidebar('/', { open: false });
+    const pill = screen.getByRole('button', { name: 'Chat' });
+
+    await userEvent.click(pill);
+    const panel = await screen.findByRole('complementary', { name: 'Chat' });
+    expect(panel.className).toContain('chat--overlay');
+    expect(pill.getAttribute('aria-expanded')).toBe('true');
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Ask Claude')));
+    expect(screen.getByRole('separator').getAttribute('aria-valuemin')).toBe('320');
+    expect(screen.getByRole('separator').getAttribute('aria-valuemax')).toBe('640');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close chat' }));
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(document.activeElement).toBe(pill);
+
+    await userEvent.click(pill);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Ask Claude')));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(document.activeElement).toBe(pill);
+  });
+
+  it('stays open when the user clicks elsewhere on the page', async () => {
+    stubHub(QUIET);
+    renderSidebar();
+    expect(await screen.findByRole('complementary', { name: 'Chat' })).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    fireEvent.click(document.body);
+    expect(screen.getByRole('complementary', { name: 'Chat' })).toBeTruthy();
+  });
+
+  it('remembers open and closed across reloads', async () => {
+    stubHub(QUIET);
+    const first = renderSidebar('/', { open: false });
+    await userEvent.click(screen.getByRole('button', { name: 'Chat' }));
+    expect(localStorage.getItem('hub:chat-open')).toBe('1');
+    first.unmount();
+
+    const second = renderSidebar('/essays', { open: false });
+    expect(await screen.findByRole('complementary', { name: 'Chat' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Close chat' }));
+    expect(localStorage.getItem('hub:chat-open')).toBe('0');
+    second.unmount();
+
+    renderSidebar('/', { open: false });
+    expect(screen.queryByRole('complementary')).toBeNull();
   });
 });
 
@@ -320,12 +333,12 @@ describe('narrow sheet before setup', () => {
       'GET /api/chat/status': () => json({ configured: false, model: 'claude-opus-5-5' }),
       'GET /api/chat/conversations': () => json(NO_CONVERSATIONS),
     });
-    renderSidebar();
+    renderSidebar('/', { open: false });
     // The status has arrived, so the field is off when the sheet opens.
     await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => path === '/api/chat/status')).toBe(true));
     await act(async () => {});
 
-    await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Chat' }));
     const heading = await screen.findByRole('heading', { name: 'Chat' });
     await waitFor(() => expect(document.activeElement).toBe(heading));
 

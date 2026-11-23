@@ -33,9 +33,9 @@ function write(key: string, value: string): void {
 }
 
 /**
- * A right-hand panel's width, set by dragging its left edge or by the arrow keys (±16 px) on
- * that edge, clamped to `[min, max]` and remembered; and whether it is collapsed to its rail.
- * A `max` that shrinks with the window narrows the panel without forgetting the chosen width.
+ * A right-anchored panel's width, set by dragging its left edge or by the arrow keys (±16 px)
+ * on that edge, clamped to `[min, max]` and remembered; and whether it is collapsed (closed),
+ * also remembered. A `max` that shrinks narrows the panel without forgetting the chosen width.
  */
 export function useResizable({ min, max, initial, storageKey, openKey = 'hub:chat-open', defaultCollapsed = false }: Options) {
   const [chosen, setChosen] = useState(() => {
@@ -111,11 +111,21 @@ export function useResizable({ min, max, initial, storageKey, openKey = 'hub:cha
     });
   }, [openKey]);
 
+  /** Opens or closes the panel, and remembers which. */
+  const setOpen = useCallback(
+    (open: boolean) => {
+      write(openKey, open ? '1' : '0');
+      setCollapsed(!open);
+    },
+    [openKey],
+  );
+
   return {
     width,
     collapsed,
     dragging,
     toggle,
+    setOpen,
     handleProps: {
       role: 'separator' as const,
       'aria-orientation': 'vertical' as const,

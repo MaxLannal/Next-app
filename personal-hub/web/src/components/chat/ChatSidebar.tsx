@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router';
 import type { ChatConversation, ChatStatus } from '@shared/types.ts';
@@ -12,22 +12,9 @@ import { useResizable } from './useResizable.ts';
 import './chat.css';
 
 const DESKTOP = '(min-width: 900px)';
-const MIN_WIDTH = 300;
-const MAX_WIDTH = 760;
+const MIN_WIDTH = 320;
+const MAX_WIDTH = 640;
 const INITIAL_WIDTH = 400;
-const RAIL_WIDTH = 48;
-/** The panel floats this far from the window's edges (`--chat-gap`). */
-const GAP = 12;
-/** What the page keeps for itself before the panel may grow into it. */
-const PAGE_MIN = 480;
-/**
- * The panel (open, or its rail) takes room from the page only while this much window is left
- * beside it. The pages lay themselves out by window width, so a narrower page would overflow:
- * below this the panel floats over the page instead.
- */
-const PAGE_FOR_PADDING = 1040;
-/** A first visit opens the panel on a window at least this wide, and starts as the rail below it. */
-const OPEN_BY_DEFAULT = 1440;
 
 const EXAMPLES = ['How far am I on my goals?', 'What did I work on this week?', 'How did I sleep this week?'];
 
@@ -47,51 +34,41 @@ function useMedia(query: string): boolean {
   return matches;
 }
 
-function useWindowWidth(): number {
-  const [width, setWidth] = useState(() => window.innerWidth);
-  useEffect(() => {
-    const update = () => setWidth(window.innerWidth);
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
-  return width;
-}
-
 const Icon = ({ d }: { d: string }) => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
     <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 const PLUS = 'M9 4v10M4 9h10';
-const CLOSE_RIGHT = 'M7 5l4 4-4 4';
-const OPEN_LEFT = 'M11 5 7 9l4 4';
 const BUBBLE = 'M3.5 4.5h11v7h-6l-3 2.5v-2.5h-2z';
 const CROSS = 'M5 5l8 8M13 5l-8 8';
 
 /**
- * Claude beside every page, reading the user's hub. On a wide window it is a glass panel on the
- * right, resizable from its left edge and collapsible to a rail. The page keeps clear of the
- * rail, and of the open panel while at least 1040 px of window is left beside it; on a
- * narrower window the open panel floats over the page. Under 900 px it opens as a sheet from
- * the Ask pill. Mounted once, in the app shell, so a conversation carries on from page to page.
+ * Claude over every page, reading the user's hub. Closed, it is one small "Chat" pill at the bottom
+ * right; the page always keeps the whole window. Open, the chat floats over the page above the
+ * pill, in Dusk's glass, resizable from its left edge; under 900 px it is a sheet. Open or closed
+ * is remembered. Mounted once, in the app shell, so a conversation carries on from page to page.
  */
 export function ChatSidebar() {
   const desktop = useMedia(DESKTOP);
-  const windowWidth = useWindowWidth();
   const panel = useResizable({
     min: MIN_WIDTH,
-    max: Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, windowWidth - PAGE_MIN)),
+    max: MAX_WIDTH,
     initial: INITIAL_WIDTH,
     storageKey: 'hub:chat-width',
     openKey: 'hub:chat-open',
-    defaultCollapsed: window.innerWidth < OPEN_BY_DEFAULT,
+    defaultCollapsed: true,
   });
-  const floating = windowWidth - (panel.collapsed ? RAIL_WIDTH : panel.width) < PAGE_FOR_PADDING;
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const open = !panel.collapsed;
   const { pathname } = useLocation();
   const chat = useChat();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
-  const askRef = useRef<HTMLButtonElement>(null);
+  const pillRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const panelId = useId();
+  const titleId = useId();
+  // What focus should do after the next open or close: the user's own clicks move it, a reload doesn't.
+  const focusNext = useRef<'field' | 'pill' | null>(null);
 
   const status = useQuery({
     queryKey: ['chat', 'status'],
@@ -103,19 +80,26 @@ export function ChatSidebar() {
     queryFn: ({ signal }) => api<ChatConversation[]>('/api/chat/conversations', { signal }),
   });
 
-  // The page and the nav keep clear of the rail, and of the open panel unless it floats (see
-  // chat.css); nothing to keep under 900 px. Re-read as the window resizes.
-  useLayoutEffect(() => {
-    const root = document.documentElement;
-    if (!desktop || floating) {
-      root.style.removeProperty('--chat-space');
-      return;
+  const show = () => {
+    focusNext.current = 'field';
+    panel.setOpen(true);
+  };
+  const hide = () => {
+    focusNext.current = 'pill';
+    panel.setOpen(false);
+  };
+
+  // Into the field when the user opens the chat (the sheet does this itself), back to the pill when they close it.
+  useEffect(() => {
+    const next = focusNext.current;
+    focusNext.current = null;
+    if (next === 'pill') pillRef.current?.focus();
+    else if (next === 'field' && desktop) {
+      const field = fieldRef.current;
+      if (field && !field.disabled) field.focus();
+      else headingRef.current?.focus();
     }
-    root.style.setProperty('--chat-space', `${(panel.collapsed ? RAIL_WIDTH : panel.width) + 2 * GAP}px`);
-    return () => {
-      root.style.removeProperty('--chat-space');
-    };
-  }, [desktop, floating, panel.collapsed, panel.width]);
+  }, [open, desktop]);
 
   const notSetUp = status.data?.configured === false;
   const current = conversations.data?.find((c) => c.id === chat.conversationId);
@@ -125,10 +109,6 @@ export function ChatSidebar() {
     void chat.open(null);
     fieldRef.current?.focus();
   };
-  const closeSheet = () => {
-    setSheetOpen(false);
-    requestAnimationFrame(() => askRef.current?.focus());
-  };
 
   const empty: ReactNode = notSetUp ? (
     <div className="chat__empty">
@@ -136,7 +116,7 @@ export function ChatSidebar() {
       <p className="chat__empty-line">
         The hub has no gateway to ask. Run setup with ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN set, then restart the hub.
       </p>
-      <Link className="btn btn-ghost btn-sm" to="/settings" onClick={sheetOpen ? closeSheet : undefined}>
+      <Link className="btn btn-ghost btn-sm" to="/settings" onClick={desktop ? undefined : hide}>
         Open Settings
       </Link>
     </div>
@@ -154,24 +134,26 @@ export function ChatSidebar() {
     </div>
   );
 
-  const head = (end: ReactNode) => (
-    <header className="chat__head">
-      <ConversationList
-        conversations={conversations.data ?? []}
-        currentId={chat.conversationId}
-        title={title}
-        onOpen={(id) => void chat.open(id)}
-        onDelete={(id) => void chat.remove(id)}
-      />
-      <button className="chat__icon" type="button" aria-label="New chat" title="New chat" onClick={newChat}>
-        <Icon d={PLUS} />
-      </button>
-      {end}
-    </header>
-  );
-
-  const conversation = (
+  const body = (
     <>
+      <h2 ref={headingRef} id={titleId} className="visually-hidden" tabIndex={-1}>
+        Chat
+      </h2>
+      <header className="chat__head">
+        <ConversationList
+          conversations={conversations.data ?? []}
+          currentId={chat.conversationId}
+          title={title}
+          onOpen={(id) => void chat.open(id)}
+          onDelete={(id) => void chat.remove(id)}
+        />
+        <button className="chat__icon" type="button" aria-label="New chat" title="New chat" onClick={newChat}>
+          <Icon d={PLUS} />
+        </button>
+        <button className="chat__icon" type="button" aria-label="Close chat" title="Close chat" onClick={hide}>
+          <Icon d={CROSS} />
+        </button>
+      </header>
       <MessageView
         turns={chat.turns}
         streaming={chat.streaming}
@@ -185,61 +167,43 @@ export function ChatSidebar() {
     </>
   );
 
-  if (desktop) {
-    if (panel.collapsed) {
-      return (
-        <aside className={floating ? 'glass chat chat--rail chat--over' : 'glass chat chat--rail'} aria-label="Chat">
-          <button className="chat__icon" type="button" aria-label="Open chat" aria-expanded="false" title="Open chat" onClick={panel.toggle}>
-            <Icon d={OPEN_LEFT} />
-          </button>
-          <button
-            className="chat__icon"
-            type="button"
-            aria-label="New chat"
-            title="New chat"
-            onClick={() => {
-              void chat.open(null);
-              panel.toggle();
-            }}
-          >
-            <Icon d={PLUS} />
-          </button>
-        </aside>
-      );
-    }
-    return (
-      <aside
-        className={floating ? 'glass chat chat--panel chat--over' : 'glass chat chat--panel'}
-        aria-label="Chat"
-        style={{ '--chat-w': `${panel.width}px` } as CSSProperties}
-      >
-        <div className="chat__edge" aria-label="Chat width" {...panel.handleProps} />
-        {head(
-          <button className="chat__icon" type="button" aria-label="Collapse chat" aria-expanded="true" title="Collapse chat" onClick={panel.toggle}>
-            <Icon d={CLOSE_RIGHT} />
-          </button>,
-        )}
-        {conversation}
-      </aside>
-    );
-  }
+  const onPanelKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    hide();
+  };
 
   return (
     <>
-      {!sheetOpen && (
-        <button ref={askRef} className="chat-ask" type="button" onClick={() => setSheetOpen(true)}>
+      {(desktop || !open) && (
+        <button
+          ref={pillRef}
+          className="chat-pill"
+          type="button"
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          onClick={open ? hide : show}
+          onKeyDown={open ? onPanelKey : undefined}
+        >
           <Icon d={BUBBLE} />
-          Ask
+          Chat
         </button>
       )}
-      {sheetOpen && (
-        <ChatSheet fieldRef={fieldRef} onClose={closeSheet}>
-          {head(
-            <button className="chat__icon" type="button" aria-label="Close chat" title="Close chat" onClick={closeSheet}>
-              <Icon d={CROSS} />
-            </button>,
-          )}
-          {conversation}
+      {open && desktop && (
+        <aside
+          id={panelId}
+          className="glass chat chat--overlay"
+          aria-labelledby={titleId}
+          style={{ '--chat-w': `${panel.width}px` } as CSSProperties}
+          onKeyDown={onPanelKey}
+        >
+          <div className="chat__edge" aria-label="Chat width" {...panel.handleProps} />
+          {body}
+        </aside>
+      )}
+      {open && !desktop && (
+        <ChatSheet id={panelId} titleId={titleId} fieldRef={fieldRef} headingRef={headingRef} onClose={hide}>
+          {body}
         </ChatSheet>
       )}
     </>
@@ -247,7 +211,10 @@ export function ChatSidebar() {
 }
 
 type ChatSheetProps = {
+  id: string;
+  titleId: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
+  headingRef: RefObject<HTMLHeadingElement | null>;
   onClose: () => void;
   children: ReactNode;
 };
@@ -256,10 +223,8 @@ type ChatSheetProps = {
  * The narrow-screen chat: a modal glass sheet over the dimmed page. Focus starts in the field
  * (on the sheet's heading when the field is off, as before setup) and stays inside.
  */
-function ChatSheet({ fieldRef, onClose, children }: ChatSheetProps) {
+function ChatSheet({ id, titleId, fieldRef, headingRef, onClose, children }: ChatSheetProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const titleId = useId();
 
   useEffect(() => {
     const { overflow } = document.body.style;
@@ -270,7 +235,7 @@ function ChatSheet({ fieldRef, onClose, children }: ChatSheetProps) {
     return () => {
       document.body.style.overflow = overflow;
     };
-  }, [fieldRef]);
+  }, [fieldRef, headingRef]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
@@ -300,10 +265,7 @@ function ChatSheet({ fieldRef, onClose, children }: ChatSheetProps) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div ref={dialogRef} className="glass chat chat--sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
-        <h2 ref={headingRef} id={titleId} className="visually-hidden" tabIndex={-1}>
-          Chat
-        </h2>
+      <div ref={dialogRef} id={id} className="glass chat chat--sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
         {children}
       </div>
     </div>,
