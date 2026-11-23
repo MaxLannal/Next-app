@@ -1,0 +1,75 @@
+/* Goals: the type-a-goal field, then rows of title over hours-and-finish with a slim
+   periwinkle bar; apricot for what is at risk. The completed list folds under the two
+   estimate-accuracy figures. Figures are tabular throughout. */
+
+.goals__error { margin-top: var(--space-sm); font-size: var(--text-sm); color: var(--color-accent-2); }
+
+/* The plan follow-up sits right under the field, on the glass at 4%. */
+.goals__plan { display: grid; gap: var(--space-sm); margin-top: var(--space-md); padding: var(--space-md); border-radius: var(--radius-inner); background: color-mix(in oklab, var(--color-light) 4%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 8%, transparent); }
+.goals__plan-title { font: 500 0.9375rem/1.3 var(--font-display); }
+
+/* The prompt: a quiet ruled row of words and fields. */
+.goal-plan { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); }
+.goal-plan__ask { font-size: 0.9375rem; color: var(--color-ink-2); }
+.goal-plan__or, .goal-plan__unit { font-size: var(--text-sm); color: var(--color-muted); }
+.goal-plan__field { min-height: 38px; padding: 0 var(--space-md); border: 0; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--color-light) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 12%, transparent); color: var(--color-ink); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.goal-plan__field--hours { width: 7ch; }
+.goal-plan__field:focus-visible { outline: none; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
+.goal-plan__field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--color-accent-2); }
+.goal-plan__field::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+.goal-plan__acts { display: flex; gap: var(--space-xs); margin-left: auto; }
+
+/* Rows: title and figures on the left, Done and ⋯ on the right. */
+.goal-list { list-style: none; margin: 0; padding: 0; }
+.goal { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-sm) var(--space-md); padding: var(--space-md) 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); }
+.goal:first-child { border-top: 0; }
+.goal-list--done .goal { border-top: 0; padding: var(--space-sm) 0; }
+
+.goal__main { display: grid; gap: var(--space-xs); min-width: 0; }
+.goal__title { font: 500 0.9375rem/1.35 var(--font-display); overflow-wrap: anywhere; }
+.goal__facts { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-md); font-size: var(--text-sm); color: var(--color-ink-2); }
+.goal__hours { font-variant-numeric: tabular-nums; }
+.goal__finish { color: var(--color-muted); }
+.goal__finish-num { font-variant-numeric: tabular-nums; }
+.goal__finish.is-risk { color: var(--color-accent-2); font-weight: 500; }
+.goal__sub { font-size: var(--text-xs); color: var(--color-muted); font-variant-numeric: tabular-nums; }
+
+/* A slim bar: periwinkle for work done or time elapsed; apricot once the goal is at risk. */
+.goal__bar { position: relative; height: 3px; margin-top: var(--space-xs); border-radius: var(--radius-pill); background: color-mix(in oklab, var(--color-light) 9%, transparent); overflow: hidden; }
+.goal__fill { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); transform-origin: left center; transition: transform var(--dur-long) var(--ease-out); }
+.goal__bar--time .goal__fill { background: color-mix(in oklab, var(--color-accent) 70%, var(--color-muted)); }
+.is-risk .goal__bar { background: color-mix(in oklab, var(--color-accent-2) 18%, transparent); }
+.is-risk .goal__fill { background: var(--color-accent-2); }
+
+.goal__acts { position: relative; display: flex; align-items: center; gap: var(--space-xs); }
+.goal__ask { font-size: var(--text-sm); color: var(--color-muted); }
+.goal__more { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--color-muted); font-size: 1.125rem; line-height: 1; cursor: pointer; transition: background-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
+.goal__more:hover, .goal__more[aria-expanded="true"] { background: color-mix(in oklab, var(--color-light) 7%, transparent); color: var(--color-ink); }
+
+/* The menu is the one raised surface over the panel: smoked glass with its lit edge, not glass on glass. */
+.goal__menu { position: absolute; z-index: var(--z-dropdown); top: calc(100% + 4px); right: 0; display: grid; min-width: 9rem; padding: var(--space-xs); border-radius: var(--radius-inner); background: var(--color-paper-2); box-shadow: var(--glass-hi), 0 18px 40px -20px oklch(8% 0.02 268 / 0.8); animation: goal-menu-in var(--dur-short) var(--ease-out); }
+.goal__menu-item { padding: var(--space-sm) var(--space-md); border: 0; border-radius: calc(var(--radius-inner) - 4px); background: none; color: var(--color-ink-2); font: 400 0.9375rem/1.2 var(--font-body); text-align: left; cursor: pointer; }
+.goal__menu-item:hover, .goal__menu-item:focus-visible { background: color-mix(in oklab, var(--color-light) 7%, transparent); color: var(--color-ink); outline: none; }
+@keyframes goal-menu-in { from { opacity: 0; transform: translateY(-4px); } }
+
+.goal__rename { min-width: 0; }
+.goal__field { width: 100%; min-height: 38px; padding: 0 var(--space-md); border: 0; border-radius: var(--radius-inner); background: color-mix(in oklab, var(--color-light) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 12%, transparent); color: var(--color-ink); font: 500 0.9375rem/1.3 var(--font-display); }
+.goal__field:focus-visible { outline: none; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
+
+/* Finished rows stay quiet: what it took against the plan, no bar. */
+.goal.is-done .goal__title { color: var(--color-ink-2); }
+
+/* The folded completed list and its ruled tally. */
+.goals__done { margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--color-rule); }
+.goals__fold { display: inline-flex; align-items: center; gap: var(--space-sm); padding: 0; border: 0; background: none; color: var(--color-muted); font: 500 var(--text-sm)/1.4 var(--font-display); cursor: pointer; }
+.goals__fold:hover { color: var(--color-ink-2); }
+.goals__fold-mark { width: 1ch; color: var(--color-accent); }
+.goals__accuracy { margin-top: var(--space-xs); font: 500 var(--text-sm)/1.5 var(--font-body); color: var(--color-ink-2); font-variant-numeric: tabular-nums; }
+
+/* Phones: the actions drop under the row. */
+@media (max-width: 40rem) {
+  .goal { grid-template-columns: 1fr; }
+  .goal__acts { justify-content: flex-start; margin-left: -8px; }
+  .goal__menu { left: 0; right: auto; }
+  .goal-plan__acts { margin-left: 0; }
+}

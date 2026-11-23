@@ -5,6 +5,7 @@ import { CalendarPanel } from './calendar/CalendarPanel.tsx';
 import { TodayAgenda } from './calendar/TodayAgenda.tsx';
 import { TimePanel } from './time/TimePanel.tsx';
 import { ExercisePanel } from './exercise/ExercisePanel.tsx';
+import { GoalsPanel } from './goals/GoalsPanel.tsx';
 
 /** Grid areas below the hero. Each later task puts its panel into its slot. */
 type SlotId = 'goals' | 'focus' | 'heatmap' | 'sleep' | 'exercise' | 'calendar' | 'resources' | 'media';
@@ -32,7 +33,7 @@ export function Dashboard() {
       <div className="container slate">
         <div className="slate__grid">
           <Slot id="goals">
-            <Panel title="Goals" />
+            <GoalsPanel />
           </Slot>
           <Slot id="focus">
             <Panel title="Focus" />

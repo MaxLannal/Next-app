@@ -185,3 +185,37 @@ export type HeatmapStats = {
   totals: { seconds: number; activeDays: number; longestStreak: number; currentStreak: number };
   years: number[];
 };
+
+// --- Task 9 ---
+
+export type GoalStatus = 'open' | 'done' | 'archived';
+
+/** How far a goal is, and when it is likely to finish (spec §6.3). */
+export type GoalProgress = {
+  mode: 'hours' | 'deadline' | 'both' | 'none';
+  /** 0..1; work done for an hours plan, time elapsed for a deadline-only plan. */
+  fraction: number | null;
+  fractionKind: 'work' | 'time' | null;
+  /** A calendar day (`YYYY-MM-DD`), or null with no plan, no recent pace, or nothing left. */
+  projectedFinish: string | null;
+  noRecentPace: boolean;
+  atRisk: boolean;
+};
+
+/** A goal for `GET /api/goals`. `deadline` is a day key; `focusedSeconds` is all focus on it. */
+export type Goal = {
+  id: number;
+  title: string;
+  createdAt: string;
+  deadline: string | null;
+  plannedMinutes: number | null;
+  originalDeadline: string | null;
+  originalPlannedMinutes: number | null;
+  status: GoalStatus;
+  doneAt: string | null;
+  focusedSeconds: number;
+  progress: GoalProgress;
+};
+
+/** `GET /api/goals/accuracy`: medians of actual ÷ planned. `count` is the done goals measured. */
+export type GoalAccuracy = { hours: number | null; dates: number | null; count: number };
