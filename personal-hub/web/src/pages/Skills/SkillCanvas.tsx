@@ -437,12 +437,6 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
           />
         ))}
 
-      {nodes.length === 0 && (
-        <p className="canvas__hint">
-          Press <b>+</b> to add your first step — what you learned, in a line — then link the focus sessions that got you there.
-        </p>
-      )}
-
       <div className="canvas__tools" aria-label="Zoom">
         <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
           −

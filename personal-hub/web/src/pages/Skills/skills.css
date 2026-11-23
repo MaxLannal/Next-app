@@ -128,8 +128,6 @@
 .node:hover .node__x, .node__x:focus-visible { opacity: 1; }
 .node__x:hover { background: color-mix(in oklab, var(--color-light) 10%, transparent); color: var(--color-ink); }
 
-.canvas__hint { position: absolute; left: 50%; top: 42%; max-width: 34ch; margin: 0; transform: translate(-50%, -50%); color: var(--color-muted); text-align: center; pointer-events: none; }
-.canvas__hint b { color: var(--color-ink); }
 .canvas__tools { position: absolute; left: var(--space-lg); bottom: var(--space-lg); z-index: 3; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: var(--radius-pill); background: oklch(14% 0.014 268 / 0.9); box-shadow: var(--glass-hi); font-size: var(--text-sm); }
 .canvas__tools button { min-width: 32px; min-height: 32px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--color-ink); font: 500 0.9375rem/1 var(--font-body); cursor: pointer; }
 .canvas__tools button:hover { background: color-mix(in oklab, var(--color-light) 10%, transparent); }
