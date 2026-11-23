@@ -108,3 +108,20 @@ export type CalendarResponse = { events: CalendarEvent[]; source: CalendarSource
 
 /** A 503 body: what is wrong and the one step that fixes it. */
 export type ServiceFix = { error: string; fix: string };
+
+// --- Task 11 ---
+
+export type ExerciseKind = 'pushups' | 'squats';
+
+/** One kind's exercise numbers for a range: its buckets, their total and the daily average. */
+export type ExerciseSeries = {
+  buckets: { label: string; value: number }[];
+  total: number;
+  dailyAverage: number;
+};
+
+/** `GET /api/exercise`: today's counts, then a series per requested kind. */
+export type ExerciseReply = {
+  today: Record<ExerciseKind, number>;
+  series: Partial<Record<ExerciseKind, ExerciseSeries>>;
+};
