@@ -15,7 +15,7 @@ import {
   updateAttachment,
   type AttachmentFilter,
 } from '../repo/attachments.ts';
-import { processImage, rewriteLatexFile } from '../services/vision.ts';
+import { isDerivedLatex, processImage, rewriteLatexFile } from '../services/vision.ts';
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 const ID = '/:id{[0-9]+}';
@@ -122,9 +122,13 @@ export function attachmentRoutes(ctx: AppContext): Hono {
         return c.json({ error: 'No such session' }, 400);
       }
     }
-    const updated = updateAttachment(ctx, id, { extractedText, sessionId });
-    if (extractedText !== undefined) rewriteLatexFile(ctx, id);
-    return c.json(updated);
+    // A derived .tex: the file is rewritten from the new text before the row and index.
+    if (extractedText !== undefined && isDerivedLatex(ctx, id)) {
+      const updated = rewriteLatexFile(ctx, id, extractedText);
+      if (updated && sessionId !== undefined) updateAttachment(ctx, id, { sessionId });
+      return c.json(getAttachment(ctx, id));
+    }
+    return c.json(updateAttachment(ctx, id, { extractedText, sessionId }));
   });
 
   // Read a photo again: the earlier reading is replaced once the new one lands.

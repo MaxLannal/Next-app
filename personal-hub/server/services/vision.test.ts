@@ -9,13 +9,15 @@ import { createClaudeClient } from './claude.ts';
 import { processImage, registerVision, TEX_TEMPLATE } from './vision.ts';
 
 let t: TestContext;
+let unregister: () => void;
 
 beforeEach(() => {
   t = makeTestContext();
-  registerVision();
+  unregister = registerVision();
 });
 afterEach(async () => {
   await t.jobs.drain();
+  unregister();
   t.cleanup();
 });
 
@@ -125,6 +127,40 @@ describe('photo to LaTeX', () => {
     expect(readStored(childId)).toBe(TEX_TEMPLATE('e^{i\\pi}+1=0'));
     expect(child.extractedText).toBe('e^{i\\pi}+1=0');
   });
+
+  it('keeps the index and the file in step after an edit', async () => {
+    t.fakes.claude.readImage = async () => ({ kind: 'latex', latex: '\\alpha+\\beta' });
+    const { list } = await uploadImage();
+    await t.jobs.drain();
+    const childId = childOf(list[0]!.id)!.id;
+    const hits = async (q: string) =>
+      ((await (await t.req('GET', `/api/search?q=${encodeURIComponent(q)}`)).json()) as { refId: number }[]).map((h) => h.refId);
+    expect(await hits('alpha')).toContain(childId);
+
+    await t.req('PATCH', `/api/attachments/${childId}`, { extractedText: '\\gamma+\\delta' });
+    await t.jobs.drain();
+
+    expect(await hits('gamma')).toContain(childId);
+    expect(await hits('alpha')).not.toContain(childId);
+    expect(readStored(childId)).toContain('\\gamma');
+    expect(readStored(childId)).not.toContain('\\alpha');
+  });
+
+  it('marks the photo pending while it is being read', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    t.fakes.claude.readImage = async () => {
+      await gate;
+      return { kind: 'caption', caption: 'Later' };
+    };
+    const { list } = await uploadImage();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect((await getAttachment(list[0]!.id)).visionStatus).toBe('pending');
+
+    release();
+    await t.jobs.drain();
+    expect((await getAttachment(list[0]!.id)).visionStatus).toBe('done');
+  });
 });
 
 describe('processImage', () => {
@@ -138,9 +174,9 @@ describe('processImage', () => {
     expect(sent).toHaveLength(0); // nothing is read before the queue runs
     await t.jobs.drain();
 
-    // The test helper never resets `onAttachmentCreated`, so later tests see the hooks again;
-    // the last conversion is this photo's.
-    const [src, dest, maxPixels] = t.fakes.mac.calls.convertImage.at(-1)!;
+    // Exactly one handler ran: one conversion, for this photo.
+    expect(t.fakes.mac.calls.convertImage).toHaveLength(1);
+    const [src, dest, maxPixels] = t.fakes.mac.calls.convertImage[0]!;
     expect(src).toBe(join(t.paths.dataDir, storedPath(list[0]!.id)));
     expect(maxPixels).toBe(2000);
     expect(dirname(dest)).toBe(t.paths.tmpDir);
@@ -335,6 +371,15 @@ describe('createClaudeClient.readImage', () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UnavailableError);
     expect((err as UnavailableError).message).toBe('Model not found on the gateway');
+    expect(seen).toHaveLength(1); // a 404 is not retried as a structured-output problem
+  });
+
+  it('names what the gateway sent when there is no parsed reading', async () => {
+    handler = reply(200, { ...MESSAGE, content: [] }); // 200 with no text at all
+    const err: unknown = await createClaudeClient(cfg())
+      .readImage({ data: Buffer.from('jpeg'), mediaType: 'image/jpeg' })
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toContain('without a parsed reading');
   });
 });
 

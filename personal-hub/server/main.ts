@@ -25,8 +25,9 @@ const ctx: AppContext = {
   git: unavailableGit,
 };
 
-// Claude goes through the gateway once setup has saved it. A failed reading is
-// marked on the photo, so this is safe to try without it.
+// Claude goes through the gateway setup has saved before boot (Setup runs first);
+// a reading failure is marked on the photo, so running without it is safe. A
+// gateway changed after boot needs a restart.
 {
   const anthropic = config.get().anthropic;
   if (anthropic.baseURL && anthropic.authToken) ctx.claude = createClaudeClient(anthropic);

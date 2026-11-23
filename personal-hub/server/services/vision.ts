@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Attachment } from '../../shared/types.ts';
 import type { AppContext } from '../context.ts';
 import {
   attachmentFiles,
@@ -8,6 +9,7 @@ import {
   deleteAttachment,
   getAttachment,
   onAttachmentCreated,
+  replaceAttachmentText,
   updateAttachment,
 } from '../repo/attachments.ts';
 
@@ -15,7 +17,7 @@ import {
 export const VISION_MAX_PIXELS = 2000;
 
 /** A `.tex` file that compiles, holding only the reading as body content. */
-export const TEX_TEMPLATE = (latex: string) =>
+export const TEX_TEMPLATE = (latex: string): string =>
   `\\documentclass{article}\n\\usepackage{amsmath,amssymb}\n\\begin{document}\n${latex}\n\\end{document}\n`;
 
 const HANDWRITTEN = 'Handwritten work';
@@ -50,6 +52,7 @@ export async function processImage(ctx: AppContext, attachmentId: number): Promi
       // "hw page.jpg" → "hw page.tex"
       const filename = `${photo.filename.replace(/\.[^.]*$/, '')}.tex`;
       createAttachment(ctx, { sessionId: photo.sessionId, parentId: photo.id, filename, bytes: Buffer.from(TEX_TEMPLATE(latex)), extractedText: latex });
+      // ImageReading's latex variant has no caption (Task 1), so the photo says what it is.
       caption = HANDWRITTEN;
     } else {
       caption = reading.caption;
@@ -64,16 +67,39 @@ export async function processImage(ctx: AppContext, attachmentId: number): Promi
   }
 }
 
-/** Every new top-level photo is read in the background. Call once at startup. */
-export function registerVision(): void {
-  onAttachmentCreated.push((inner, a) => {
-    if (a.kind === 'image' && a.parentId === null) inner.jobs.enqueue('vision', () => processImage(inner, a.id));
-  });
+/**
+ * Every new top-level photo is read in the background. Call once at startup.
+ * A photo is enqueued once even if this is registered twice; the returned
+ * function removes the handler again (tests).
+ */
+export function registerVision(): () => void {
+  let seen: WeakSet<Attachment> | null = null;
+  const handler = (inner: AppContext, a: Attachment) => {
+    if (a.kind !== 'image' || a.parentId !== null) return;
+    seen ??= new WeakSet();
+    if (seen.has(a)) return;
+    seen.add(a);
+    inner.jobs.enqueue('vision', () => processImage(inner, a.id));
+  };
+  onAttachmentCreated.push(handler);
+  return () => {
+    const at = onAttachmentCreated.indexOf(handler);
+    if (at !== -1) onAttachmentCreated.splice(at, 1);
+  };
 }
 
-/** A LaTeX child (`<photo>.tex`) whose text was edited gets its file rewritten from the template. */
-export function rewriteLatexFile(ctx: AppContext, attachmentId: number): void {
+/**
+ * A LaTeX child (`<photo>.tex`) with new text: the file is rewritten from the
+ * template first, then the row and its index — a failed write changes neither.
+ */
+export function rewriteLatexFile(ctx: AppContext, attachmentId: number, extractedText: string): Attachment | null {
   const found = attachmentFiles(ctx, attachmentId);
-  if (!found || found.attachment.kind !== 'latex' || found.attachment.parentId === null) return;
-  writeFileSync(found.file, TEX_TEMPLATE(found.attachment.extractedText));
+  if (found && (found.attachment.kind !== 'latex' || found.attachment.parentId === null)) return null;
+  return replaceAttachmentText(ctx, attachmentId, (text) => Buffer.from(TEX_TEMPLATE(text)), () => extractedText);
+}
+
+/** Is this a derived LaTeX file, the kind whose text can be edited in place? */
+export function isDerivedLatex(ctx: AppContext, attachmentId: number): boolean {
+  const found = attachmentFiles(ctx, attachmentId);
+  return found !== null && found.attachment.kind === 'latex' && found.attachment.parentId !== null;
 }

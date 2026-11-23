@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
+import type { ImageReading } from '../../shared/types.ts';
 import type { HubConfig } from '../config.ts';
 import type { ClaudeClient } from '../context.ts';
 import { UnavailableError } from '../context.ts';
@@ -22,6 +23,10 @@ function onGatewayMissingModel(err: unknown): never {
   if (err instanceof Anthropic.NotFoundError) throw new UnavailableError(MODEL_MISSING);
   throw err;
 }
+
+/** Only the part the hub uses; a latex reading carries no caption (see `ImageReading`). */
+const toReading = (r: z.infer<typeof Reading>): ImageReading =>
+  r.kind === 'latex' ? { kind: 'latex', latex: r.latex } : { kind: 'caption', caption: r.caption };
 
 /** The JSON object in a text reply, alone or inside a code fence. */
 function parseReading(text: string): z.infer<typeof Reading> {
@@ -51,9 +56,13 @@ export function createClaudeClient(cfg: AnthropicConfig): ClaudeClient {
         output_config: { format: zodOutputFormat(Reading) },
       });
       const reading = message.parsed_output;
-      if (!reading) throw new Error('The gateway answered without a parsed reading');
-      return reading.kind === 'latex' ? { kind: 'latex' as const, latex: reading.latex } : { kind: 'caption' as const, caption: reading.caption };
+      if (!reading) {
+        const blocks = message.content.map((block) => (block.type === 'text' ? block.text : '')).join('');
+        throw new Error(`The gateway answered without a parsed reading: ${blocks.slice(0, 300)}`);
+      }
+      return toReading(reading);
     } catch (err) {
+      // A 404 is the model, not structured outputs: don't spend a second call on it.
       if (!(err instanceof Anthropic.BadRequestError)) return onGatewayMissingModel(err);
       // The gateway may not support structured outputs: ask for the same shape as plain JSON.
       try {
@@ -64,8 +73,7 @@ export function createClaudeClient(cfg: AnthropicConfig): ClaudeClient {
           messages: [{ role: 'user', content: [image, { type: 'text', text: 'Read this photo.' }] }],
         });
         const text = message.content.map((block) => (block.type === 'text' ? block.text : '')).join('');
-        const reading = parseReading(text);
-        return reading.kind === 'latex' ? { kind: 'latex' as const, latex: reading.latex } : { kind: 'caption' as const, caption: reading.caption };
+        return toReading(parseReading(text));
       } catch (retryErr) {
         return onGatewayMissingModel(retryErr);
       }
@@ -90,7 +98,11 @@ export function createClaudeClient(cfg: AnthropicConfig): ClaudeClient {
         { signal: p.signal },
       );
       stream.on('text', onText);
-      return await stream.finalMessage();
+      try {
+        return await stream.finalMessage();
+      } finally {
+        stream.off('text', onText); // the stream is done either way; the caller's closure can go
+      }
     } catch (err) {
       return onGatewayMissingModel(err);
     }

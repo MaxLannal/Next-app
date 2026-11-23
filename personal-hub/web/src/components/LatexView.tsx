@@ -1,6 +1,7 @@
 import katex from 'katex';
 import { useMemo, useState } from 'react';
 import 'katex/dist/katex.min.css';
+import './LatexView.css';
 
 type LatexViewProps = {
   /** LaTeX body content: the same text saved in the `.tex` file. */

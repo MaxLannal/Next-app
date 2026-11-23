@@ -1,10 +1,13 @@
 // Manual smoke test for the gateway: `node scripts/smoke-claude.ts path/to/handwriting.jpg`.
 // Reads ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and (optional) ANTHROPIC_MODEL from the
 // environment, exactly as the hub's caller would, and prints the reading. Never prints tokens.
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { extname, join } from 'node:path';
 import { createClaudeClient } from '../server/services/claude.ts';
 
-const file = process.argv[2];
+let file = process.argv[2];
 if (!file) {
   console.error('Usage: node scripts/smoke-claude.ts <image>');
   process.exit(2);
@@ -17,6 +20,21 @@ if (!baseURL || !authToken) {
   process.exit(2);
 }
 const model = process.env.ANTHROPIC_MODEL ?? 'claude-opus-5-5';
+
+// The client takes JPEG; convert anything else the way the hub does, through sips.
+const MIME: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif', pdf: 'application/pdf' };
+const ext = extname(file).slice(1).toLowerCase();
+const mime = MIME[ext];
+if (!mime) {
+  console.error(`Unknown file type ".${ext}" — pass a jpg, png, heic, heif or pdf.`);
+  process.exit(2);
+}
+if (mime !== 'image/jpeg') {
+  const jpeg = join(tmpdir(), `smoke-claude-${process.pid}.jpg`);
+  execFileSync('sips', ['-s', 'format', 'jpeg', file, '--out', jpeg]);
+  file = jpeg;
+  console.error(`Converted to JPEG for the reading: ${jpeg}`);
+}
 
 const client = createClaudeClient({ baseURL, authToken, model });
 const started = Date.now();
