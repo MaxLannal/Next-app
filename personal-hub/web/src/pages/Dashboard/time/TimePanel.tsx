@@ -10,13 +10,14 @@ import './TimePanel.css';
 export function TimePanel() {
   const now = useNow(1000);
   const daysLeft = differenceInCalendarDays(lastDayOfYear(now), now);
+  const clock = format(now, 'HH:mm:ss');
 
   return (
     <div className="time">
       <h1 className="time__date">{format(now, 'EEEE, d MMMM')}</h1>
-      <p className="time__clock num" aria-live="off">
+      <p className="time__clock num" role="timer" aria-label={clock} aria-live="off">
         <time dateTime={now.toISOString()}>
-          <FixedDigits text={format(now, 'HH:mm:ss')} />
+          <FixedDigits text={clock} />
         </time>
       </p>
       <p className="time__year num">

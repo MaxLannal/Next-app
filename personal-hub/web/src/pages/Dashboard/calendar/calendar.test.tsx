@@ -114,6 +114,18 @@ it('says when events come from the Calendar app', async () => {
 });
 
 describe('CalendarPanel', () => {
+  it('shows an empty range with no events and no source note', async () => {
+    serve(() => json({ events: [], source: 'eventkit' }));
+    renderWithQuery(<CalendarPanel />);
+
+    const today = await screen.findByRole('button', { name: 'Sunday 22 November, no events' });
+    expect(today.getAttribute('aria-pressed')).toBe('true');
+    expect(await screen.findByText('Nothing on')).toBeTruthy();
+    expect(screen.queryByText('From the Calendar app — repeating events may be missing')).toBeNull();
+    // The grid is still there: every day of the shown month has no events.
+    expect(screen.getByRole('button', { name: 'Monday 2 November, no events' })).toBeTruthy();
+  });
+
   it('lists the selected day and opens an event', async () => {
     const user = userEvent.setup();
     serve(() => json({ events: [lecture, office, reading, dinner], source: 'eventkit' }));

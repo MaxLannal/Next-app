@@ -22,9 +22,18 @@ it('shows the date, a live clock, the ISO week and the days left', () => {
   render(<TimePanel />);
 
   expect(screen.getByText('Sunday, 22 November')).toBeTruthy();
-  const clock = screen.getByText('14:59:12');
-  expect(clock.closest('[aria-live]')?.getAttribute('aria-live')).toBe('off');
+  const clock = screen.getByRole('timer', { name: '14:59:12' });
+  expect(clock.getAttribute('aria-label')).toBe('14:59:12');
+  expect(clock.getAttribute('aria-live')).toBe('off');
   expect(screen.getByText('Week 47 · 39 days left in 2026')).toBeTruthy();
+});
+
+it('has one copy of the clock for find and selection', () => {
+  const { container } = render(<TimePanel />);
+
+  // The digits are laid out for show only; no hidden copy doubles them.
+  expect(screen.queryByText('14:59:12')).toBeNull();
+  expect(container.textContent?.match(/14:59:12/g)).toHaveLength(1);
 });
 
 it('ticks every second', () => {
@@ -33,7 +42,7 @@ it('ticks every second', () => {
   act(() => {
     vi.advanceTimersByTime(1000);
   });
-  expect(screen.getByText('14:59:13')).toBeTruthy();
+  expect(screen.getByRole('timer', { name: '14:59:13' })).toBeTruthy();
 });
 
 it('rolls over at midnight', () => {
@@ -45,6 +54,6 @@ it('rolls over at midnight', () => {
     vi.advanceTimersByTime(1000);
   });
   expect(screen.getByText('Monday, 28 December')).toBeTruthy();
-  expect(screen.getByText('00:00:00')).toBeTruthy();
+  expect(screen.getByRole('timer', { name: '00:00:00' })).toBeTruthy();
   expect(screen.getByText('Week 53 · 3 days left in 2026')).toBeTruthy();
 });

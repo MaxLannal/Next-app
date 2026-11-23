@@ -21,10 +21,18 @@ function run(argv) {
   const out = [];
   for (const calendar of Calendar.calendars()) {
     // One unreadable calendar (a broken subscription, say) is skipped, not fatal.
+    // The error is never echoed: Apple Event errors can quote event titles and
+    // notes, and the hub's log must not carry calendar content.
     try {
       out.push(...readCalendar(calendar, from, to));
-    } catch (err) {
-      console.log(`Skipped a calendar: ${err}`); // stderr
+    } catch {
+      let name = 'untitled';
+      try {
+        name = String(calendar.name() ?? 'untitled');
+      } catch {
+        // Even the name is unreadable; the fixed word stands in.
+      }
+      console.log(`Skipped calendar "${name}": could not read its events`); // stderr
     }
   }
 

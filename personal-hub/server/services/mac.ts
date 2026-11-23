@@ -60,6 +60,7 @@ function failure(out: { code: number; stderr: string }): string {
     : out.code === NOT_FOUND ? ' (not found)'
     : out.code === TIMED_OUT ? ' (timed out)'
     : '';
+  // stderr is the program's account of its failure, safe to log; stdout is its data (event titles and notes), never logged.
   const stderr = out.stderr.trim().slice(0, 500);
   return `exit ${out.code}${meaning}${stderr ? `: ${stderr}` : ''}`;
 }
