@@ -22,6 +22,7 @@ export function Nav({ timerSlot }: NavProps) {
         <RailLink to="/" end label="Dashboard" icon={<GaugeIcon />} />
         <RailLink to="/essays" label="Essays" icon={<PenIcon />} />
         <RailLink to="/database" label="Database" icon={<DatabaseIcon />} />
+        <RailLink to="/skills" label="Skills" icon={<PyramidIcon />} />
       </nav>
       <div className="rail__end">
         {timerSlot}
@@ -81,6 +82,16 @@ function DatabaseIcon() {
       <ellipse cx="12" cy="5.8" rx="7" ry="2.8" />
       <path d="M5 5.8v6.2c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8V5.8" />
       <path d="M5 12v6.2c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8V12" />
+    </Icon>
+  );
+}
+
+/** Skills: a pyramid of stages, climbed from the foundations up. */
+function PyramidIcon() {
+  return (
+    <Icon>
+      <path d="M12 3.5L21 20H3z" />
+      <path d="M7.4 12h9.2M5.2 16h13.6" />
     </Icon>
   );
 }

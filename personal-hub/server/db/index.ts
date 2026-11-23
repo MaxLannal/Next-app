@@ -1,21 +1,25 @@
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
-const SCHEMA_VERSION = 1;
-const schema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
+/** Each step brings the file up one version; a fresh file runs them all, an older one only the rest. */
+const MIGRATIONS = [
+  readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'), // v1: the hub
+  readFileSync(new URL('./skills.sql', import.meta.url), 'utf8'), // v2: the skill tracker
+];
+export const SCHEMA_VERSION = MIGRATIONS.length;
 
-/** Opens the hub database (WAL, foreign keys on) and creates the schema on a fresh file. */
+/** Opens the hub database (WAL, foreign keys on) and brings its schema up to date, one version at a time. */
 export function openDb(file: string): DatabaseSync {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA foreign_keys = ON');
 
   const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
-  if (user_version === 0) {
+  for (let version = user_version; version < SCHEMA_VERSION; version++) {
     db.exec('BEGIN');
     try {
-      db.exec(schema);
-      db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      db.exec(MIGRATIONS[version]);
+      db.exec(`PRAGMA user_version = ${version + 1}`);
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');

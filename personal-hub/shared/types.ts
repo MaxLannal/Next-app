@@ -299,3 +299,42 @@ export type ChatEvent =
 
 /** `GET /api/chat/status`: whether the hub has a gateway to ask, and the model it asks. */
 export type ChatStatus = { configured: boolean; model: string };
+
+// --- Skill tracker ---
+
+export type SkillNodeKind = 'step' | 'experience';
+
+/** One skill and how far it has come. `stages` counts the canvas's layers, with its empty top one. */
+export type Skill = {
+  id: number;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  steps: number;
+  experiences: number;
+  stages: number;
+  /** Steps in each stage, foundations first. */
+  layerSteps: number[];
+};
+
+/** The focus session an experience stands for, as the canvas shows it. */
+export type SkillSessionRef = { id: number; name: string; subject: string | null; focusSeconds: number; startedAt: string };
+
+export type SkillNode = {
+  id: number;
+  skillId: number;
+  kind: SkillNodeKind;
+  title: string;
+  description: string;
+  /** 0 is the foundations; higher is harder work. */
+  layer: number;
+  x: number;
+  y: number;
+  /** An experience's session; null for a step, or when the session was deleted. */
+  session: SkillSessionRef | null;
+  createdAt: string;
+};
+
+export type SkillLink = { id: number; stepId: number; experienceId: number };
+
+export type SkillBoard = { skill: Skill; nodes: SkillNode[]; links: SkillLink[] };

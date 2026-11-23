@@ -1,0 +1,15 @@
+/* The skill pyramid: periwinkle for the stages done, a glow on the one being worked in, the empty
+   stage on top only an outline. */
+.pyramid { display: block; overflow: visible; }
+.pyramid__band polygon { stroke-linejoin: round; transition: fill var(--dur-short) var(--ease-out); }
+.pyramid__band.is-done polygon { fill: color-mix(in oklab, var(--color-accent) 42%, transparent); stroke: color-mix(in oklab, var(--color-accent) 55%, transparent); stroke-width: 1; }
+.pyramid__band.is-current polygon {
+  fill: color-mix(in oklab, var(--color-accent) 78%, transparent);
+  stroke: var(--color-accent-hi);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 8px color-mix(in oklab, var(--color-accent) 55%, transparent));
+}
+.pyramid__band.is-empty polygon { fill: color-mix(in oklab, var(--color-light) 5%, transparent); stroke: color-mix(in oklab, var(--color-light) 14%, transparent); stroke-width: 1; }
+.pyramid__band.is-open polygon { fill: none; stroke: color-mix(in oklab, var(--color-light) 34%, transparent); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.pyramid__dot { fill: var(--color-accent-ink); }
+.pyramid__band.is-done .pyramid__dot { fill: color-mix(in oklab, var(--color-light) 80%, transparent); }

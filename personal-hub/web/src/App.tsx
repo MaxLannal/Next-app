@@ -9,6 +9,7 @@ import { DatabasePage, SessionPage } from './pages/Database/DatabasePage.tsx';
 import { EssaysPage } from './pages/Essays/EssaysPage.tsx';
 import { EssayEditor } from './pages/Essays/editor/EssayEditor.tsx';
 import { SettingsPage } from './pages/Settings/SettingsPage.tsx';
+import { SkillsPage } from './pages/Skills/SkillsPage.tsx';
 
 export function App() {
   const { pathname } = useLocation();
@@ -29,6 +30,7 @@ export function App() {
           <Route path="/essays/:id" element={<EssayEditor />} />
           <Route path="/database" element={<DatabasePage />} />
           <Route path="/database/session/:id" element={<SessionPage />} />
+          <Route path="/skills" element={<SkillsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

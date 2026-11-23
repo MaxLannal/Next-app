@@ -19,6 +19,7 @@ import { mediaRoutes } from './routes/media.ts';
 import { sleepIngestRoutes, sleepRoutes } from './routes/sleep.ts';
 import { goalRoutes } from './routes/goals.ts';
 import { chatRoutes } from './routes/chat.ts';
+import { skillRoutes } from './routes/skills.ts';
 
 const WEB_DIST = fileURLToPath(new URL('../web/dist', import.meta.url));
 
@@ -45,6 +46,7 @@ export function createApp(ctx: AppContext): Hono {
   app.route('/api/sleep', sleepRoutes(ctx));
   app.route('/api/settings', settingsRoutes(ctx));
   app.route('/api/chat', chatRoutes(ctx));
+  app.route('/api/skills', skillRoutes(ctx));
 
   app.use('*', webApp(WEB_DIST));
   return app;

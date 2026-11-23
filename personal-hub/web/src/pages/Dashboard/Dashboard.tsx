@@ -11,16 +11,18 @@ import { YearOfFocusPanel } from './heatmap/YearOfFocusPanel.tsx';
 import { SleepPanel } from './sleep/SleepPanel.tsx';
 import { FocusPanel } from './focus/FocusPanel.tsx';
 import { GoalsPanel } from './goals/GoalsPanel.tsx';
+import { SkillTrackerPanel } from './skills/SkillTrackerPanel.tsx';
 
 /** Grid areas: goals and focus sit on the painting, the rest on slate below it. */
-type SlotId = 'goals' | 'focus' | 'heatmap' | 'sleep' | 'exercise' | 'calendar' | 'resources' | 'media';
+type SlotId = 'goals' | 'focus' | 'skills' | 'heatmap' | 'sleep' | 'exercise' | 'calendar' | 'resources' | 'media';
 
 const PHOTO_SOURCE = 'https://commons.wikimedia.org/wiki/File:Vallee-brouillard.jpg';
 
 /**
  * The fog-valley hero: time on the pale fog, today's agenda in glass on the
  * dark side, and Goals and Focus in glass on the painting below them. Then the
- * slate, opening with the year of focus; two columns, one under 900px.
+ * slate, opening with the skill tracker beside the year of focus (a third and two
+ * thirds); six even tracks, one column under 900px.
  */
 export function Dashboard() {
   reserveForTimer();
@@ -47,6 +49,9 @@ export function Dashboard() {
 
       <div className="container slate">
         <div className="slate__grid">
+          <Slot id="skills">
+            <SkillTrackerPanel />
+          </Slot>
           <Slot id="heatmap">
             <YearOfFocusPanel />
           </Slot>

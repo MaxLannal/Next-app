@@ -72,6 +72,12 @@ export function Heatmap({ year, days, onActiveDay, describe, label, pinned, onPi
   const { cells, rows, months, weeks, index } = useMemo(() => layout(year, days), [year, days]);
   const svgRef = useRef<SVGSVGElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // This year opens on the latest weeks, where the work is; other years open on January.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && year === new Date().getFullYear()) el.scrollLeft = el.scrollWidth;
+  }, [year]);
   const [hovered, setHovered] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [stop, setStop] = useState<string | null>(null);
@@ -148,7 +154,7 @@ export function Heatmap({ year, days, onActiveDay, describe, label, pinned, onPi
 
   return (
     <div className="heatmap">
-      <div className="heatmap__scroll" onScroll={(e) => placeTip(e.currentTarget.scrollLeft)}>
+      <div ref={scrollRef} className="heatmap__scroll" onScroll={(e) => placeTip(e.currentTarget.scrollLeft)}>
         <svg
           ref={svgRef}
           role="grid"

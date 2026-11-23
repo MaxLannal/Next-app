@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, expect, it } from 'vitest';
-import { openDb } from './index.ts';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { openDb, SCHEMA_VERSION } from './index.ts';
 
 const TABLES = [
   'subjects',
@@ -36,7 +36,7 @@ it('migrates a fresh file', () => {
   const db = openDb(join(dir, 'hub.db'));
   try {
     const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(user_version).toBe(1);
+    expect(user_version).toBe(SCHEMA_VERSION);
     const rows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[];
     expect(TABLES).toHaveLength(17);
     expect(rows.map((r) => r.name)).toEqual(expect.arrayContaining(TABLES));
@@ -54,7 +54,7 @@ it('reopen is idempotent', () => {
   const second = openDb(file);
   try {
     const { user_version } = second.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(user_version).toBe(1);
+    expect(user_version).toBe(SCHEMA_VERSION);
     const { n } = second.prepare('SELECT count(*) AS n FROM subjects').get() as { n: number };
     expect(n).toBe(1);
   } finally {
@@ -88,4 +88,34 @@ it('never reuses an attachment id', () => {
   } finally {
     db.close();
   }
+});
+
+describe('the v2 upgrade', () => {
+  it('adds the skill tracker to a v1 file without touching its data', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { DatabaseSync } = await import('node:sqlite');
+    const { readFileSync } = await import('node:fs');
+    const dir = mkdtempSync(join(tmpdir(), 'hub-v1-'));
+    const file = join(dir, 'hub.db');
+    try {
+      // A file as v1 left it, holding one goal.
+      const v1 = new DatabaseSync(file);
+      v1.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+      v1.exec('PRAGMA user_version = 1');
+      v1.exec("INSERT INTO goals (title, created_at) VALUES ('Keep me', '2026-11-22T18:00:00.000Z')");
+      v1.close();
+
+      const db = openDb(file);
+      const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
+      expect(user_version).toBe(2);
+      const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name);
+      expect(tables).toEqual(expect.arrayContaining(['skills', 'skill_nodes', 'skill_links']));
+      expect((db.prepare('SELECT title FROM goals').get() as { title: string }).title).toBe('Keep me');
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
