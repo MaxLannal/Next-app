@@ -14,9 +14,23 @@ import { Toolbar, type ExportKind } from './Toolbar.tsx';
 import { backupTime, clearBackup, readBackup, useAutosave, type UnsavedBackup } from './useAutosave.ts';
 import '../essays.css';
 import 'katex/dist/katex.min.css';
+import '@fontsource-variable/source-serif-4/opsz.css';
+import '@fontsource-variable/source-serif-4/opsz-italic.css';
 import './print.css';
 
 type Snapshot = { id: number; createdAt: string };
+
+const COLUMN_LABEL: Record<Essay['column'], string> = { meditations: 'Personal meditations', plans: 'Plans', insights: 'Insights' };
+const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+/** About 230 words a minute, never under one. */
+const readMinutes = (words: number) => Math.max(1, Math.round(words / 230));
+
+/** The title wraps like the reading page's head: the field grows to fit its lines. */
+function fitHeight(field: HTMLTextAreaElement | null) {
+  if (!field) return;
+  field.style.height = 'auto';
+  field.style.height = `${field.scrollHeight}px`;
+}
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -46,9 +60,10 @@ function download(blob: Blob, name: string) {
 const fileSafe = (title: string) => (title.trim() === '' ? 'Untitled essay' : title.trim()).replace(/[\\/:*?"<>|]+/g, '—').slice(0, 80);
 
 /**
- * One essay, full page: a reading column on bone paper with a title field above
- * it. Autosaves 800 ms after typing stops and keeps a backup when the hub can't
- * be reached. The toolbar is sticky above the page.
+ * One essay, full page, like the reading page it will become: the column label, a
+ * serif title that wraps, its date and reading time, then the writing in a serif
+ * column on the dark page. Autosaves 800 ms after typing stops and keeps a backup
+ * when the hub can't be reached. The toolbar is sticky above the page.
  */
 export function EssayEditor() {
   const { id: rawId } = useParams();
@@ -120,6 +135,13 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
   const [backup, setBackup] = useState<UnsavedBackup | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const titleRef = useRef(title);
+  const titleField = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => fitHeight(titleField.current), [title]);
+  useEffect(() => {
+    const refit = () => fitHeight(titleField.current);
+    window.addEventListener('resize', refit);
+    return () => window.removeEventListener('resize', refit);
+  }, []);
   titleRef.current = title;
   const startBaseRef = useRef(startBase);
   startBaseRef.current = startBase;
@@ -265,7 +287,6 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
         <Link className="editor-back" to="/essays">
           ← Essays
         </Link>
-        <span className="editor-column">{essay.column === 'meditations' ? 'Personal meditations' : essay.column === 'plans' ? 'Plans' : 'Insights'}</span>
       </header>
 
       {editor && (
@@ -319,22 +340,38 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
           </div>
         )}
 
-        <div className="well editor-well">
-          <input
-            className="editor-title"
-            aria-label="Title"
-            placeholder="Untitled"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              notifyChange();
-            }}
-            onBlur={() => void flush()}
-          />
+        <article className="editor-sheet">
+          <header className="editor-head">
+            <p className="editor-kicker">{COLUMN_LABEL[essay.column]}</p>
+            <textarea
+              ref={titleField}
+              className="editor-title"
+              aria-label="Title"
+              placeholder="Untitled"
+              rows={1}
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value.replace(/\n/g, ' '));
+                notifyChange();
+              }}
+              onKeyDown={(e) => {
+                // A title is one line that wraps; Enter goes on to the writing.
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  editor?.commands.focus('start');
+                }
+              }}
+              onBlur={() => void flush()}
+            />
+            <p className="editor-meta">
+              {longDate(essay.createdAt)} · {readMinutes(words)} min read
+            </p>
+            <span className="editor-rule" aria-hidden="true" />
+          </header>
           <div className="editor-paper">
             <EditorContent editor={editor} />
           </div>
-        </div>
+        </article>
 
         <footer className="editor-status" aria-live="polite">
           <span className="num">{words} words</span>

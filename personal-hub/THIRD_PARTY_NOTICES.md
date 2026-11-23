@@ -41,3 +41,10 @@ SOFTWARE.
 
 - Photograph by Thomas Bresson, licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/), via Wikimedia Commons: https://commons.wikimedia.org/wiki/File:Vallee-brouillard.jpg
 - The app credits it in the Dashboard footer.
+
+## Source Serif 4
+
+The essay editor's typeface, Source Serif 4 by Frank Grießhammer for Adobe, is self-hosted through
+`@fontsource-variable/source-serif-4` and licensed under the SIL Open Font License 1.1
+(https://openfontlicense.org). Copyright 2014–2023 Adobe (http://www.adobe.com/), with Reserved
+Font Name 'Source'.
