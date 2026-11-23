@@ -3,12 +3,12 @@ import { useState } from 'react';
 import type { FocusSession, SubjectSlice } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
 import { Pie, PieLegend } from '../../../components/charts/Pie.tsx';
-import { TimerPill } from '../../../components/TimerPill.tsx';
 import { Panel } from '../../../components/ui/Panel.tsx';
 import { Tabs } from '../../../components/ui/Tabs.tsx';
 import { formatDuration } from '../../../lib/format.ts';
 import { SessionHistory } from './SessionHistory.tsx';
 import { StartForm } from './StartForm.tsx';
+import { Stopwatch } from './Stopwatch.tsx';
 import { useCurrentSession, useOpenGoals, useSessionActions, useSubjects } from './useSessions.ts';
 import { WrapUpSheet } from './WrapUpSheet.tsx';
 import './focus.css';
@@ -25,9 +25,9 @@ const RANGES: { value: Range; label: string }[] = [
 const RANGE_WORD: Record<Range, string> = { day: 'this day', week: 'this week', month: 'this month', year: 'this year' };
 
 /**
- * Focus: the running session's clock and keys, the start form, the finished
- * sessions by day beside the pie of what they were about, and the wrap-up sheet
- * on Stop (or on any row).
+ * Focus: the start form, the finished sessions by day beside the pie of what
+ * they were about, and the wrap-up sheet on Stop (or on any row). While a
+ * session is open, a stopwatch fills the panel over all of it.
  */
 export function FocusPanel() {
   const { session, elapsed } = useCurrentSession();
@@ -67,30 +67,17 @@ export function FocusPanel() {
   const total = slices.reduce((sum, s) => sum + s.seconds, 0);
 
   return (
-    <Panel
-      title="Focus"
-      actions={
-        session !== null ? (
-          <TimerPill
-            session={session}
-            elapsed={elapsed}
-            onPause={() => void run(() => actions.pause(session.id))}
-            onResume={() => void run(() => actions.resume(session.id))}
-            onStop={() => void stop(session.id)}
-          />
-        ) : undefined
-      }
-    >
-      <div className="focus">
+    <Panel title="Focus">
+      <div className={session !== null ? 'focus focus--timing' : 'focus'}>
+        {/* While a session is open the stopwatch covers the panel; on Stop it drains away. */}
+        <Stopwatch
+          session={session}
+          elapsed={elapsed}
+          onPause={() => session !== null && void run(() => actions.pause(session.id))}
+          onResume={() => session !== null && void run(() => actions.resume(session.id))}
+          onStop={() => session !== null && void stop(session.id)}
+        />
         {session === null && <StartForm subjects={subjects} goals={goals} actions={actions} busy={false} />}
-        {session !== null && session.autoPausedAt !== null && (
-          <p className="focus__slept" role="status">
-            Paused while your Mac slept.{' '}
-            <button className="focus__inline" type="button" onClick={() => void run(() => actions.resume(session.id))}>
-              Resume
-            </button>
-          </p>
-        )}
         {error !== null && (
           <p className="focus__error" role="alert">
             {error}

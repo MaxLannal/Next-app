@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useState } from 'react';
 import type { Goal, GoalAccuracy } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
 import { EmptyState } from '../../../components/ui/EmptyState.tsx';
 import { Panel } from '../../../components/ui/Panel.tsx';
+import { GoalAdder } from './GoalAdder.tsx';
 import { GoalRow, type GoalEdit } from './GoalRow.tsx';
 import { PlanPrompt } from './PlanPrompt.tsx';
 import './GoalsPanel.css';
@@ -25,14 +26,13 @@ export function accuracyLine(a: GoalAccuracy): string | null {
 }
 
 /**
- * Goals: type one and press Enter, then answer "By when? or how long?". Rows show the hours
+ * Goals: press + and type one, then answer "By when? or how long?". Rows show the hours
  * against the plan, a slim bar and the projected finish; at-risk rows turn apricot. The
  * completed list folds away under the two estimate-accuracy figures.
  */
 export function GoalsPanel() {
   const queryClient = useQueryClient();
   const fieldId = useId();
-  const [draft, setDraft] = useState('');
   const [planning, setPlanning] = useState<Goal | null>(null);
   const [creating, setCreating] = useState(false);
   const [showDone, setShowDone] = useState(false);
@@ -51,19 +51,17 @@ export function GoalsPanel() {
   const setOpenRows = (update: (rows: Goal[]) => Goal[]) =>
     queryClient.setQueryData<Goal[]>(OPEN_KEY, (rows) => update(rows ?? []));
 
-  const create = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const title = draft.trim();
-    if (title === '') return;
+  const create = async (title: string): Promise<boolean> => {
     setError(null);
     setCreating(true);
     try {
       const created = await api<Goal>('/api/goals', { method: 'POST', json: { title } });
       setOpenRows((rows) => [created, ...rows]);
-      setDraft('');
       setPlanning(created);
+      return true;
     } catch (err) {
       setError(messageOf(err, 'Couldn’t save that goal — retry'));
+      return false;
     } finally {
       setCreating(false);
     }
@@ -99,24 +97,7 @@ export function GoalsPanel() {
   const tally = accuracy.data === undefined ? null : accuracyLine(accuracy.data);
 
   return (
-    <Panel title="Goals" className="goals">
-      <form className="join" onSubmit={(e) => void create(e)}>
-        <label className="visually-hidden" htmlFor={fieldId}>
-          New goal
-        </label>
-        <input
-          id={fieldId}
-          type="text"
-          enterKeyHint="done"
-          autoComplete="off"
-          placeholder="Type a goal, press Enter"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button className="btn" type="submit" disabled={creating || draft.trim() === ''}>
-          Add
-        </button>
-      </form>
+    <Panel title="Goals" className="goals" actions={<GoalAdder onAdd={create} busy={creating} />}>
       {error !== null && (
         <p className="goals__error" role="alert">
           {error}
@@ -148,7 +129,7 @@ export function GoalsPanel() {
           }
         />
       ) : open.isSuccess && openRows.length === 0 ? (
-        <EmptyState title="No goals yet" line="Type what you mean to finish, press Enter, and say when or how long." />
+        <EmptyState title="No goals yet" line="Press + to add what you mean to finish, then say when or how long." />
       ) : (
         <ul className="goal-list" aria-label="Open goals">
           {openRows.map((g, i) => (

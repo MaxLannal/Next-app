@@ -97,7 +97,12 @@ describe('GoalsPanel', () => {
     });
     renderPanel();
 
-    const field = await screen.findByRole('textbox', { name: 'New goal' });
+    // The "+" pours the type bar out; it starts closed.
+    const plus = await screen.findByRole('button', { name: 'Add a goal' });
+    expect(plus.getAttribute('aria-expanded')).toBe('false');
+    await user.click(plus);
+    const field = screen.getByRole('textbox', { name: 'New goal' });
+    await waitFor(() => expect(document.activeElement).toBe(field));
     await user.type(field, 'Read Ch. 5{Enter}');
     await waitFor(() => expect(bodyOf(fetchMock, 'POST')).toEqual({ title: 'Read Ch. 5' }));
 
@@ -117,7 +122,8 @@ describe('GoalsPanel', () => {
     });
     renderPanel();
 
-    await user.type(await screen.findByRole('textbox', { name: 'New goal' }), 'Stretch{Enter}');
+    await user.click(await screen.findByRole('button', { name: 'Add a goal' }));
+    await user.type(screen.getByRole('textbox', { name: 'New goal' }), 'Stretch{Enter}');
     const prompt = await screen.findByText('By when?');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(prompt.isConnected).toBe(false));
@@ -297,5 +303,28 @@ describe('PlanPrompt', () => {
     // jsdom does not run a submit button's default action, so submit the form directly.
     fireEvent.submit(screen.getByRole('form', { name: 'Plan this goal' }));
     expect(onSave).toHaveBeenCalledWith({ deadline: '2000-01-01', plannedMinutes: 90 });
+  });
+});
+
+describe('the + adder', () => {
+  it('opens and closes from the +, and Esc closes it back to the +', async () => {
+    const user = userEvent.setup();
+    stubHub({
+      'GET /api/goals?status=open': () => json([]),
+      'GET /api/goals/accuracy': () => json(NO_ACCURACY),
+      'GET /api/goals?status=done': () => json([]),
+    });
+    renderPanel();
+    const plus = await screen.findByRole('button', { name: 'Add a goal' });
+    await user.click(plus);
+    expect(screen.getByRole('button', { name: 'Close the new goal' }).getAttribute('aria-expanded')).toBe('true');
+    await user.type(screen.getByRole('textbox', { name: 'New goal' }), 'Draft');
+    await user.keyboard('{Escape}');
+    const closed = screen.getByRole('button', { name: 'Add a goal' });
+    expect(closed.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(closed);
+    // Reopened, the draft is gone.
+    await user.click(closed);
+    expect((screen.getByRole('textbox', { name: 'New goal' }) as HTMLInputElement).value).toBe('');
   });
 });

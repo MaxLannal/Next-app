@@ -49,6 +49,7 @@ test('dashboard renders every panel', async ({ page }) => {
 test('goal flow', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('/');
+  await page.getByRole('button', { name: 'Add a goal' }).click();
   const title = page.getByPlaceholder('Type a goal, press Enter');
   await title.fill('Finish chapter 4 (e2e)');
   await title.press('Enter');
