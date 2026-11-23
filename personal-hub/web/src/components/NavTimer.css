@@ -1,10 +1,9 @@
-/* The nav's timer: the pill beside Settings, and the calm apricot line under it
-   when a key didn't take. */
+/* The rail's timer, and the calm apricot line beside it when a key didn't take. */
 
 .nav-timer__error {
   position: fixed;
-  top: calc(var(--nav-h) + var(--space-sm));
-  right: var(--gutter);
+  bottom: var(--space-lg);
+  left: calc(var(--rail-w) + var(--space-sm));
   z-index: var(--z-sticky-nav);
   max-width: min(28rem, calc(100vw - 2 * var(--gutter)));
   padding: var(--space-xs) var(--space-md);
@@ -16,6 +15,6 @@
 }
 
 @media (max-width: 700px) {
-  /* Under the pill that has taken the second row. */
-  .nav-timer__error { top: calc(var(--nav-h) + 56px); left: var(--gutter); right: var(--gutter); max-width: none; }
+  /* Above the timer that rides over the bottom bar. */
+  .nav-timer__error { bottom: calc(var(--dock-h) + 60px); left: var(--gutter); right: var(--gutter); max-width: none; }
 }

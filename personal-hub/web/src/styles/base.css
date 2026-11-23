@@ -3,7 +3,8 @@
    reference page, site/themes/dusk/{base,style}.css (Nutlope/hallmark, MIT).
    Tokens live in tokens.css. */
 
-:root { --nav-h: 76px; }
+/* No top bar any more (the side rail is in components/Nav.css); --nav-h is the space kept at the top. */
+:root { --nav-h: 24px; }
 
 /* ── Reset and type ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
@@ -50,18 +51,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .join input::placeholder { color: var(--color-muted); }
 .join:focus-within { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
 .join .btn { min-height: 46px; }
-
-/* ── Nav: clear over the photograph, slate glass once past it ───────────── */
-.nav { position: fixed; inset: 0 0 auto; z-index: var(--z-sticky-nav); height: var(--nav-h); color: var(--color-day-ink); transition: background-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out), box-shadow var(--dur-short) var(--ease-out); -webkit-app-region: drag; }
-/* In Hub.app the nav bar moves the window; its links and buttons stay clickable. */
-.nav a, .nav button { -webkit-app-region: no-drag; }
-.nav.is-solid { color: var(--color-ink); background: color-mix(in oklab, var(--color-paper) 72%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3); box-shadow: 0 1px 0 color-mix(in oklab, var(--color-light) 7%, transparent); }
-.nav__in { height: 100%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--space-lg); }
-.nav__links { display: flex; gap: var(--space-xl); }
-.nav__links a, .nav__link { position: relative; font-size: 0.9375rem; font-weight: 500; text-decoration: none; opacity: 0.86; transition: opacity var(--dur-micro); }
-.nav__links a:hover, .nav__link:hover, .nav__links a[aria-current="page"], .nav__link[aria-current="page"] { opacity: 1; }
-.nav__links a[aria-current="page"]::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: currentColor; }
-.nav__end { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-lg); }
 
 /* The dusk mark: a disc from the last of the sun to the first of the night. */
 .wordmark { display: inline-flex; align-items: center; gap: 12px; font: 600 1.125rem/1 var(--font-display); letter-spacing: -0.01em; text-decoration: none; justify-self: start; }
@@ -140,8 +129,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ── Narrow screens ─────────────────────────────────────────────────────── */
 @media (max-width: 60rem) {
-  .nav__in { grid-template-columns: auto 1fr auto; gap: var(--space-md); }
-  .nav__links { justify-content: center; gap: var(--space-lg); }
   .hero { min-height: 0; padding-block: calc(var(--nav-h) + var(--space-2xl)) 0; }
   .hero__grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2xl); padding-block: 0 var(--space-2xl); }
   .hero__scrim { background:
@@ -155,10 +142,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .hero__panels { grid-template-columns: minmax(0, 1fr); grid-template-areas: "goals" "focus"; padding-bottom: var(--space-xl); }
 }
 @media (max-width: 40rem) {
-  :root { --nav-h: 64px; }
-  .nav__in { gap: 12px; }
-  .nav__links { gap: 12px; }
-  .nav__links a, .nav__link { font-size: var(--text-sm); }
   .wordmark { gap: var(--space-sm); font-size: 1rem; }
   .panel { padding: var(--space-md); }
   .sheet-backdrop { place-items: end stretch; padding: var(--space-xl) 0 0; }

@@ -1,6 +1,6 @@
-/* The running session in the nav and in the Focus panel: one pill, the dot
+/* The running session in the side rail and in the Focus panel: one pill, the dot
    breathing while it runs and still (apricot) while it waits, the clock in
-   fixed-digit cells. In the nav at 700px or less it drops to a second row. */
+   fixed-digit cells. The rail stacks it (components/Nav.css). */
 
 .timer {
   display: inline-flex;
@@ -70,26 +70,6 @@
 }
 .timer__key:hover { background: color-mix(in oklab, var(--color-light) 12%, transparent); }
 .timer__key:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-
-@media (max-width: 700px) {
-  /* In the nav it takes the second row under the links; the panel's stays in line. */
-  .nav__end .timer {
-    position: fixed;
-    left: var(--gutter);
-    right: var(--gutter);
-    top: var(--nav-h);
-    z-index: var(--z-sticky);
-    justify-content: space-between;
-    background: color-mix(in oklab, var(--color-paper) 82%, transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(1.3);
-    backdrop-filter: blur(18px) saturate(1.3);
-    box-shadow: var(--glass-hi), 0 12px 32px -12px color-mix(in oklab, var(--color-shade) 80%, transparent);
-  }
-  .nav__end .timer__where { max-width: none; flex: 1; }
-  /* The dashboard reserves the second row (see Dashboard.tsx), so the pill covers nothing. */
-  html[data-timer-row="1"] { scroll-padding-top: calc(var(--nav-h) + 56px); }
-  html[data-timer-row="1"] body { padding-top: 52px; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .timer__dot { animation: none; }

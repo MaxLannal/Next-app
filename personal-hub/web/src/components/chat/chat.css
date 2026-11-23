@@ -9,12 +9,12 @@
   --chat-edge: var(--space-lg);
   --chat-pill-h: 40px;
   /* The panel's foot, just above the pill. */
-  --chat-foot: calc(var(--chat-edge) + var(--chat-pill-h) + var(--space-sm) + env(safe-area-inset-bottom));
+  --chat-foot: calc(var(--chat-edge) + var(--dock-h, 0px) + var(--chat-pill-h) + var(--space-sm) + env(safe-area-inset-bottom));
 }
 @media (max-width: 40rem) { :root { --chat-edge: var(--space-md); } }
 
 /* ── The pill: a ghost in glass, its lit edge, a visible focus ring ────── */
-.chat-pill { position: fixed; right: var(--chat-edge); bottom: calc(var(--chat-edge) + env(safe-area-inset-bottom)); z-index: var(--z-sticky-nav); display: inline-flex; align-items: center; gap: var(--space-sm); height: var(--chat-pill-h); padding: 0 var(--space-md) 0 14px; border: 0; border-radius: var(--radius-pill); background: var(--glass); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35); backdrop-filter: blur(var(--glass-blur)) saturate(1.35); box-shadow: var(--glass-hi), 0 12px 32px -14px color-mix(in oklab, var(--color-shade) 80%, transparent); color: var(--color-ink); font: 600 0.9375rem/1 var(--font-body); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), box-shadow var(--dur-short) var(--ease-out); }
+.chat-pill { position: fixed; right: var(--chat-edge); bottom: calc(var(--chat-edge) + var(--dock-h, 0px) + env(safe-area-inset-bottom)); z-index: var(--z-sticky-nav); display: inline-flex; align-items: center; gap: var(--space-sm); height: var(--chat-pill-h); padding: 0 var(--space-md) 0 14px; border: 0; border-radius: var(--radius-pill); background: var(--glass); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35); backdrop-filter: blur(var(--glass-blur)) saturate(1.35); box-shadow: var(--glass-hi), 0 12px 32px -14px color-mix(in oklab, var(--color-shade) 80%, transparent); color: var(--color-ink); font: 600 0.9375rem/1 var(--font-body); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), box-shadow var(--dur-short) var(--ease-out); }
 .chat-pill:hover { background: color-mix(in oklab, var(--color-paper-3) 72%, transparent); }
 .chat-pill[aria-expanded="true"] { background: color-mix(in oklab, var(--color-paper-3) 80%, transparent); box-shadow: var(--glass-hi), inset 0 0 0 1px color-mix(in oklab, var(--color-light) 14%, transparent), 0 12px 32px -14px color-mix(in oklab, var(--color-shade) 80%, transparent); }
 .chat-pill:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }

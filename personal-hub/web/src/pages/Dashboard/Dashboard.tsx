@@ -82,8 +82,8 @@ export function Dashboard() {
 }
 
 /**
- * Under 700px the nav's timer takes a fixed second row; this reserves its
- * height on the page, so it covers nothing. Shares the current-session query,
+ * Under 700px the rail's timer rides just above the bottom bar; this reserves
+ * its height on the page, so it covers nothing. Shares the current-session query,
  * so it costs no extra request.
  */
 function reserveForTimer() {
