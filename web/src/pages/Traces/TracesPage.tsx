@@ -3,7 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import type { EssaySummary, Trace } from '@shared/types.ts';
+import type { EssaySummary, Trace, TracePhoto } from '@shared/types.ts';
 import { api, ApiError } from '../../api.ts';
 import { formatDayKey, localDay } from '../../lib/format.ts';
 import './traces.css';
@@ -45,8 +45,41 @@ function pinElement(): HTMLButtonElement {
   const el = document.createElement('button');
   el.type = 'button';
   el.className = 'trace-pin';
-  el.innerHTML = '<span class="trace-pin__dot"></span><span class="trace-pin__label"><span class="trace-pin__date num"></span><span class="trace-pin__city"></span></span>';
+  el.innerHTML =
+    '<span class="trace-pin__dot"></span><span class="trace-pin__label"><span class="trace-pin__date num"></span><span class="trace-pin__city"></span></span><span class="trace-pin__album" hidden></span>';
   return el;
+}
+
+/** How many photos the album under a pin fans out; the rest are counted. */
+const ALBUM_MAX = 3;
+
+/** Under the dot, the place's photos overlapped like a little stack of prints, the first on top. */
+function fillAlbum(el: HTMLElement, photos: readonly TracePhoto[]) {
+  const album = el.querySelector<HTMLElement>('.trace-pin__album');
+  if (!album) return;
+  const key = photos.map((p) => p.id).join(',');
+  if (album.dataset.key === key) return;
+  album.dataset.key = key;
+  const prints: HTMLElement[] = photos.slice(0, ALBUM_MAX).map((p, i) => {
+    const img = document.createElement('img');
+    img.className = 'trace-pin__photo';
+    img.src = p.url;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.draggable = false;
+    img.style.setProperty('--i', String(i));
+    img.style.zIndex = String(ALBUM_MAX - i);
+    return img;
+  });
+  if (photos.length > ALBUM_MAX) {
+    const more = document.createElement('span');
+    more.className = 'trace-pin__more num';
+    more.textContent = `+${photos.length - ALBUM_MAX}`;
+    prints.push(more);
+  }
+  album.replaceChildren(...prints);
+  album.hidden = photos.length === 0;
 }
 
 /** Hides the map's own city labels for `cities`, on top of each label layer's own filter. */
@@ -60,9 +93,10 @@ function hidePinnedPlaceNames(map: mapboxgl.Map, cities: string[], own: Map<stri
   }
 }
 
-function fillPin(el: HTMLElement, t: { city: string; country: string; day: string | null }, selected: boolean) {
+function fillPin(el: HTMLElement, t: { city: string; country: string; day: string | null; photos?: readonly TracePhoto[] }, selected: boolean) {
   el.querySelector('.trace-pin__city')!.textContent = t.city || placeOf(t);
   el.querySelector('.trace-pin__date')!.textContent = whenOf(t);
+  fillAlbum(el, t.photos ?? []);
   el.setAttribute('aria-label', [placeOf(t), whenOf(t)].filter(Boolean).join(', '));
   el.classList.toggle('is-selected', selected);
 }

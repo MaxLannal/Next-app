@@ -96,6 +96,28 @@
 .trace-pin:focus-visible { outline: none; }
 .trace-pin:focus-visible .trace-pin__dot { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 .trace-pin.is-selected .trace-pin__dot { background: var(--color-accent-2); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent-2) 30%, transparent), 0 0 16px var(--color-accent-2); }
+
+/* Under the dot, the place's photos as a little stack of prints: overlapped, each a touch askew,
+   the first on top; they fan out a little when the pin is pointed at. */
+/* Its own width: inside the 22 px pin, flex would squeeze the prints into strips. */
+.trace-pin__album { position: absolute; top: calc(100% + 2px); left: 50%; display: flex; align-items: center; width: max-content; transform: translateX(-50%); }
+.trace-pin__album > * { flex: none; }
+.trace-pin__album[hidden] { display: none; }
+.trace-pin__photo {
+  --tilt: calc((var(--i) - 1) * 7deg);
+  display: block; width: 38px; height: 38px; margin-left: -22px;
+  object-fit: cover; border-radius: 7px;
+  border: 2px solid oklch(95% 0.008 268 / 0.92);
+  background: var(--color-paper-2);
+  box-shadow: 0 6px 14px -6px oklch(5% 0.02 268 / 0.9);
+  transform: rotate(var(--tilt)) translateY(calc(var(--i) * -1px));
+  transition: margin var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out);
+}
+.trace-pin__photo:first-child { margin-left: 0; }
+.trace-pin__more { position: relative; z-index: 5; margin-left: -10px; padding: 1px 6px; border-radius: var(--radius-pill); background: oklch(14% 0.016 268 / 0.9); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 14%, transparent); color: var(--color-ink-2); font: 500 10px/1.5 var(--font-body); }
+.trace-pin:hover .trace-pin__photo, .trace-pin:focus-visible .trace-pin__photo { margin-left: -12px; }
+.trace-pin:hover .trace-pin__photo:first-child, .trace-pin:focus-visible .trace-pin__photo:first-child { margin-left: 0; }
+@media (prefers-reduced-motion: reduce) { .trace-pin__photo { transition: none; } }
 .trace-pin.is-draft .trace-pin__dot { animation: trace-pulse 1.4s ease-out infinite; }
 @keyframes trace-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent-2) 60%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
 
