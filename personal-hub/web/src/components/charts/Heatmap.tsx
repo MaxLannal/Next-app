@@ -13,6 +13,10 @@ type HeatmapProps = {
   describe: (day: HeatmapDay) => string;
   /** Names the grid for screen readers. */
   label?: string;
+  /** A day to hold the ring while nothing is hovered or focused: the panel's pinned day. */
+  pinned?: string | null;
+  /** The day of a cell clicked (which also focuses it) — the panel pins it. */
+  onPick?: (date: string) => void;
 };
 
 const CELL = 11;
@@ -53,25 +57,41 @@ function layout(year: number, days: HeatmapDay[]) {
 const dateOf = (target: EventTarget | null) =>
   target instanceof Element ? (target.closest('[data-date]')?.getAttribute('data-date') ?? null) : null;
 
+/** A cell's centre across the grid; the tip takes the scroll off it as the grid moves. */
+const center = (cell: Cell) => LEFT + cell.col * PITCH + CELL / 2;
+
 /**
  * A year of focus like GitHub's: 53 week columns × 7 weekday rows of 11 px
  * cells in sage (the one place sage appears; spec §3), with month and Mon/Wed/Fri
  * labels. One cell is in the tab order at a time; arrows move a day (up/down)
- * or a week (left/right), Home and End jump to the year's ends. Hover or focus
+ * or a week (left/right), Home and End jump to the year's ends (a modified
+ * arrow or Home/End is left to the browser). Hover or focus
  * shows `describe(day)` in a tooltip and reports the day through `onActiveDay`.
  */
-export function Heatmap({ year, days, onActiveDay, describe, label }: HeatmapProps) {
+export function Heatmap({ year, days, onActiveDay, describe, label, pinned, onPick }: HeatmapProps) {
   const { cells, rows, months, weeks, index } = useMemo(() => layout(year, days), [year, days]);
   const svgRef = useRef<SVGSVGElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [stop, setStop] = useState<string | null>(null);
-  const [scrollX, setScrollX] = useState(0);
 
   const tabStop = stop !== null && index.has(stop) ? stop : (cells[0]?.day.date ?? null);
-  const activeDate = hovered ?? focused;
+  // A focused cell wins over a hovered one: the keyboard is where the reader is.
+  const activeDate = focused ?? hovered;
   const active = activeDate !== null ? cells[index.get(activeDate) ?? -1] : undefined;
   const activeDay = active?.day ?? null;
+  const ringed = focused !== null ? cells[index.get(focused) ?? -1] : hovered !== null || !pinned ? undefined : cells[index.get(pinned) ?? -1];
+
+  // The tip follows the scroll without re-rendering the grid: its transform is
+  // written straight to the node, here and from the scroll handler.
+  const placeTip = (scrollLeft: number) => {
+    if (tipRef.current === null || active === undefined) return;
+    tipRef.current.style.transform = `translateX(${center(active) - scrollLeft}px)`;
+  };
+  useEffect(() => {
+    placeTip(svgRef.current?.parentElement?.scrollLeft ?? 0);
+  }, [active]);
 
   // Report changes only: not the initial null and not every re-render. Compared
   // by content, so a parent passing a fresh `days` array each render can't loop.
@@ -84,6 +104,8 @@ export function Heatmap({ year, days, onActiveDay, describe, label }: HeatmapPro
   });
 
   const onKeyDown = (e: KeyboardEvent<SVGSVGElement>) => {
+    // Shift+Arrow selects, ⌘/⌃+Arrow scrolls, ⌥+Arrow moves a word: not ours.
+    if (e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;
     const from = index.get(dateOf(e.target) ?? '');
     if (from === undefined) return;
     const last = cells.length - 1;
@@ -111,16 +133,22 @@ export function Heatmap({ year, days, onActiveDay, describe, label }: HeatmapPro
   const onMouseOver = (e: MouseEvent<SVGSVGElement>) => {
     // Crossing the gaps between cells keeps the last day rather than flickering.
     const date = dateOf(e.target);
-    if (date !== null) setHovered(date);
+    if (date === null || focused !== null) return;
+    // Placed here as well as on scroll: a scrolled grid has no scroll event to wait for.
+    placeTip(svgRef.current?.parentElement?.scrollLeft ?? 0);
+    setHovered(date);
   };
 
   const onClick = (e: MouseEvent<SVGSVGElement>) => {
-    if (e.target instanceof SVGElement && e.target.matches('[data-date]')) e.target.focus();
+    if (!(e.target instanceof SVGElement) || !e.target.matches('[data-date]')) return;
+    e.target.focus();
+    const date = e.target.getAttribute('data-date');
+    if (date !== null) onPick?.(date);
   };
 
   return (
     <div className="heatmap">
-      <div className="heatmap__scroll" onScroll={(e) => setScrollX(e.currentTarget.scrollLeft)}>
+      <div className="heatmap__scroll" onScroll={(e) => placeTip(e.currentTarget.scrollLeft)}>
         <svg
           ref={svgRef}
           role="grid"
@@ -169,15 +197,26 @@ export function Heatmap({ year, days, onActiveDay, describe, label }: HeatmapPro
               ))}
             </g>
           ))}
+          {/* The ringed cell's, outside the fill: paper-dark under periwinkle, so it holds on a
+              bright sage cell. A mouse hover has its own outline; the ring marks keyboard focus
+              or the panel's pinned day. */}
+          {ringed !== undefined && (
+            <g aria-hidden="true">
+              <rect className="heatmap__ring" x={LEFT + ringed.col * PITCH - 2} y={TOP + ringed.row * PITCH - 2} width={CELL + 4} height={CELL + 4} rx={3} />
+              <rect className="heatmap__ring heatmap__ring--accent" x={LEFT + ringed.col * PITCH - 2} y={TOP + ringed.row * PITCH - 2} width={CELL + 4} height={CELL + 4} rx={3} />
+            </g>
+          )}
         </svg>
       </div>
       {active && (
-        <div
-          className={`chart-tip${active.col < EDGE_COLS ? ' is-start' : active.col >= weeks - EDGE_COLS ? ' is-end' : ''}`}
-          style={{ left: LEFT + active.col * PITCH + CELL / 2 - scrollX, top: TOP + active.row * PITCH }}
-          aria-hidden="true"
-        >
-          {describe(active.day)}
+        <div className="heatmap__tip" style={{ top: TOP + active.row * PITCH }}>
+          <div
+            ref={tipRef}
+            className={`chart-tip${active.col < EDGE_COLS ? ' is-start' : active.col >= weeks - EDGE_COLS ? ' is-end' : ''}`}
+            aria-hidden="true"
+          >
+            {describe(active.day)}
+          </div>
         </div>
       )}
     </div>

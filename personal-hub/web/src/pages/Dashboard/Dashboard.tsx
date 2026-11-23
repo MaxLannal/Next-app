@@ -5,6 +5,7 @@ import { CalendarPanel } from './calendar/CalendarPanel.tsx';
 import { TodayAgenda } from './calendar/TodayAgenda.tsx';
 import { TimePanel } from './time/TimePanel.tsx';
 import { ExercisePanel } from './exercise/ExercisePanel.tsx';
+import { YearOfFocusPanel } from './heatmap/YearOfFocusPanel.tsx';
 
 /** Grid areas below the hero. Each later task puts its panel into its slot. */
 type SlotId = 'goals' | 'focus' | 'heatmap' | 'sleep' | 'exercise' | 'calendar' | 'resources' | 'media';
@@ -38,7 +39,7 @@ export function Dashboard() {
             <Panel title="Focus" />
           </Slot>
           <Slot id="heatmap">
-            <Panel title="Year of focus" />
+            <YearOfFocusPanel />
           </Slot>
           <Slot id="sleep">
             <Panel title="Sleep" />
