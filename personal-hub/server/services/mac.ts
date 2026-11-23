@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CalendarEvent } from '../../shared/types.ts';
+import type { CalendarEvent, NowPlaying } from '../../shared/types.ts';
 import { UnavailableError, type MacBridge } from '../context.ts';
 import type { HubPaths } from '../paths.ts';
 
@@ -45,6 +45,7 @@ export const execFileRun: Run = (cmd, args, opts = {}) =>
 const MAC_BIN = fileURLToPath(new URL('../../mac/bin/', import.meta.url));
 const CALENDAR_HELPER = join(MAC_BIN, 'calendar-helper');
 const CALENDAR_JXA = fileURLToPath(new URL('./calendar-jxa.js', import.meta.url));
+const MEDIA_HELPER = join(MAC_BIN, 'media-helper');
 
 /** The helper's code when macOS hasn't granted it calendar access. */
 const HELPER_DENIED = 2;
@@ -114,15 +115,35 @@ export function createMacBridge(
       if (out.code !== 0) throw new Error(`sips couldn't convert the image (exit ${out.code}): ${out.stderr.trim()}`);
     },
 
-    // ── Media (Task 15 adds the media-helper) ─────────────────────────────
-    async mediaKey() {
-      throw new UnavailableError('Media controls are not set up yet');
+    // ── Media ─────────────────────────────────────────────────────────────
+    // The now-playing panel is experimental: `media-helper` posts the keyboard's
+    // media keys and reads MediaRemote. Track details (like calendar titles) are
+    // never logged; only a failure's exit code and stderr are.
+    async mediaKey(key) {
+      const out = await run(MEDIA_HELPER, ['key', key], { timeoutMs: 10_000 });
+      if (out.code === 0) return;
+      log(`Media key failed, ${failure(out)}`);
+      if (out.code === HELPER_DENIED) throw new UnavailableError('Media controls need Accessibility access');
+      if (out.code === NOT_FOUND) throw new UnavailableError('Media controls are not set up yet');
+      throw new Error(`The media key didn't go through (exit ${out.code})`);
     },
     async nowPlaying() {
-      throw new UnavailableError('Media controls are not set up yet');
+      const out = await run(MEDIA_HELPER, ['now'], { timeoutMs: 10_000 });
+      if (out.code === NOT_FOUND) return null;
+      if (out.code !== 0) {
+        log(`Now playing unavailable, ${failure(out)}`);
+        return null;
+      }
+      const track = parseNowPlaying(out.stdout);
+      if (!track) log(`Now playing unreadable, ${failure(out)}`);
+      return track;
     },
     async mediaStatus() {
-      return 'missing';
+      const out = await run(MEDIA_HELPER, ['status'], { timeoutMs: 10_000 });
+      if (out.code !== 0) return 'missing';
+      const value = parseJson(out.stdout)?.accessibility;
+      if (value === true) return 'ready';
+      return value === false ? 'no-accessibility' : 'missing';
     },
 
     // ── Power ─────────────────────────────────────────────────────────────
@@ -156,6 +177,19 @@ function parseJson(text: string): Record<string, unknown> | null {
 
 const isString = (v: unknown): v is string => typeof v === 'string';
 const optionalString = (v: unknown): string | null => (isString(v) && v !== '' ? v : null);
+
+/** The media helper's JSON as a track, or null if it isn't one. A null title means no player, not a broken reply. */
+function parseNowPlaying(text: string): NowPlaying | null {
+  const value = parseJson(text);
+  if (!value || !isString(value.title) || !isString(value.artist)) return null;
+  return {
+    title: value.title,
+    artist: value.artist,
+    album: optionalString(value.album),
+    artwork: optionalString(value.artwork),
+    playing: value.playing === true,
+  };
+}
 
 /** The helper's (or the JXA script's) JSON as events, or null if it isn't a list of events. */
 function parseEvents(text: string): CalendarEvent[] | null {

@@ -22,7 +22,7 @@ for dir in "$root"/mac/*-helper; do
   name="$(basename "$dir")"
   out="$root/mac/bin/$name"
 
-  args=(-O)
+  args=(-O -swift-version 5)
   for framework in $(frameworks_for "$name"); do
     args+=(-framework "$framework")
   done

@@ -173,12 +173,79 @@ describe('images', () => {
 });
 
 describe('media (Task 15)', () => {
-  it('is not set up yet', async () => {
-    const mac = bridge(fakeRun({}).run);
+  /** A `Run` that answers the media helper, and logs every call. */
+  function mediaRun(answer: Awaited<ReturnType<Run>>) {
+    const calls: Call[] = [];
+    const run: Run = async (cmd, args) => {
+      calls.push({ cmd, args });
+      return answer;
+    };
+    return { run, calls };
+  }
 
-    expect(await mac.mediaStatus()).toBe('missing');
-    await expect(mac.mediaKey('play')).rejects.toBeInstanceOf(UnavailableError);
-    await expect(mac.nowPlaying()).rejects.toBeInstanceOf(UnavailableError);
+  it('mediaStatus maps to ready / no-accessibility / missing', async () => {
+    const status = async (answer: Awaited<ReturnType<Run>>) => bridge(mediaRun(answer).run).mediaStatus();
+
+    expect(await status(ok('{"accessibility":true}'))).toBe('ready');
+    expect(await status(ok('{"accessibility":false}'))).toBe('no-accessibility');
+    expect(await status(exit(127))).toBe('missing');
+    expect(await status(ok('not json'))).toBe('missing');
+  });
+
+  it('mediaKey posts the right arg', async () => {
+    const { run, calls } = mediaRun(ok(''));
+    const mac = bridge(run);
+
+    await mac.mediaKey('play');
+    await mac.mediaKey('next');
+    await mac.mediaKey('previous');
+
+    expect(calls.map((c) => c.args)).toEqual([['key', 'play'], ['key', 'next'], ['key', 'previous']]);
+    for (const call of calls) expect(call.cmd).toMatch(/mac\/bin\/media-helper$/);
+  });
+
+  it('mediaKey without accessibility fails with the grant needed', async () => {
+    const denied: Run = async () => exit(2, '{"error":"no-accessibility"}');
+
+    const err = await bridge(denied).mediaKey('play').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(UnavailableError);
+    expect(logs.some((m) => m.includes('exit 2') && m.includes('not authorized'))).toBe(true);
+  });
+
+  it('nowPlaying parses the track', async () => {
+    const track = { title: 'Pink + White', artist: 'Frank Ocean', album: 'Blonde', artwork: 'data:image/jpeg;base64,AAA', playing: true };
+    const { run, calls } = mediaRun(ok(JSON.stringify(track)));
+
+    expect(await bridge(run).nowPlaying()).toEqual(track);
+    expect(calls[0]?.args).toEqual(['now']);
+  });
+
+  it('nowPlaying absorbs a missing album and artwork', async () => {
+    const { run } = mediaRun(ok(JSON.stringify({ title: 'Pink + White', artist: 'Frank Ocean', playing: false })));
+
+    expect(await bridge(run).nowPlaying()).toEqual({
+      title: 'Pink + White',
+      artist: 'Frank Ocean',
+      album: null,
+      artwork: null,
+      playing: false,
+    });
+  });
+
+  it('nowPlaying unavailable returns null', async () => {
+    const unavailable = (answer: Awaited<ReturnType<Run>>) => bridge(mediaRun(answer).run).nowPlaying();
+
+    expect(await unavailable(exit(3, '{"error":"unavailable"}'))).toBeNull();
+    expect(await unavailable(exit(127))).toBeNull();
+    expect(await unavailable(ok('not json'))).toBeNull();
+  });
+
+  it('never logs track details', async () => {
+    const { run } = mediaRun(exit(3, '{"title":"Pink + White"}', 'MediaRemote answered 3'));
+    await bridge(run).nowPlaying();
+
+    expect(logs.join('\n')).not.toContain('Pink');
   });
 });
 

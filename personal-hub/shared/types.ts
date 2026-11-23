@@ -108,3 +108,7 @@ export type CalendarResponse = { events: CalendarEvent[]; source: CalendarSource
 
 /** A 503 body: what is wrong and the one step that fixes it. */
 export type ServiceFix = { error: string; fix: string };
+// --- Task 15 ---
+
+/** `GET /api/media/status`: ready, the helper lacks Accessibility, or it isn't built. */
+export type MediaStatus = 'ready' | 'no-accessibility' | 'missing';

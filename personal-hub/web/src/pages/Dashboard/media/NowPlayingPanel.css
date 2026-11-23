@@ -1,0 +1,26 @@
+/* Now playing: one track row over three round keys, on the panel's glass. */
+.media__track { display: flex; align-items: center; gap: var(--space-md); min-width: 0; }
+
+.media__art { flex: none; width: 48px; height: 48px; border-radius: var(--radius-inner); object-fit: cover; box-shadow: var(--glass-hi); }
+
+.media__text { display: grid; gap: 2px; min-width: 0; }
+.media__title { overflow: hidden; font: 500 var(--text-md)/1.3 var(--font-display); text-overflow: ellipsis; white-space: nowrap; }
+.media__artist { overflow: hidden; font-size: var(--text-sm); color: var(--color-ink-2); text-overflow: ellipsis; white-space: nowrap; }
+.media__album { overflow: hidden; font-size: var(--text-xs); color: var(--color-muted); text-overflow: ellipsis; white-space: nowrap; }
+
+.media__quiet { color: var(--color-muted); }
+
+.media__controls { display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-lg); }
+
+.media__key {
+  display: inline-grid; place-items: center; width: 40px; min-height: 40px; padding: 0; border-radius: var(--radius-pill);
+}
+.media__key--main { width: 52px; min-height: 52px; }
+
+.media__allow { max-width: 52ch; font-size: var(--text-sm); color: var(--color-ink-2); }
+
+.media__problem { margin-top: var(--space-md); font-size: var(--text-sm); color: var(--color-accent-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .media__key { transition: none; }
+}
