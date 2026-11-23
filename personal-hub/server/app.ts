@@ -17,6 +17,7 @@ import { sessionRoutes } from './routes/sessions.ts';
 import { statsRoutes } from './routes/stats.ts';
 import { mediaRoutes } from './routes/media.ts';
 import { sleepIngestRoutes, sleepRoutes } from './routes/sleep.ts';
+import { goalRoutes } from './routes/goals.ts';
 
 const WEB_DIST = fileURLToPath(new URL('../web/dist', import.meta.url));
 
@@ -38,6 +39,7 @@ export function createApp(ctx: AppContext): Hono {
   app.route('/api/stats', statsRoutes(ctx));
   app.route('/api/media', mediaRoutes(ctx));
   app.route('/api/github', githubRoutes(ctx));
+  app.route('/api/goals', goalRoutes(ctx));
   app.route('/api/ingest', sleepIngestRoutes(ctx));
   app.route('/api/sleep', sleepRoutes(ctx));
   app.route('/api/settings', settingsRoutes(ctx));

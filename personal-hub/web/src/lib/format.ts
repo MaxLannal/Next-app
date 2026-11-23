@@ -43,6 +43,21 @@ export function sizeOf(bytes: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Hours for goals: `"6 h"`, `"10.5 h"`, `"0 h"`. One decimal only when there is one. */
+export function formatHours(seconds: number): string {
+  const hours = (Number.isFinite(seconds) && seconds > 0 ? seconds : 0) / 3600;
+  const rounded = Math.round(hours * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} h`;
+}
+
+/** `"26 Nov"`: the day and the month, for a deadline or a projection. */
+export function formatDayShort(dayKey: string): string {
+  const match = DAY_KEY.exec(dayKey);
+  if (!match) return dayKey;
+  const month = MONTHS[Number(match[2]) - 1];
+  return month === undefined ? dayKey : `${Number(match[3])} ${month}`;
+}
+
 /** `"Sun 22 Nov"`. A day key (`2026-11-22`) is that calendar day; an instant is its local day. */
 export function formatShortDate(dayKeyOrIso: string): string {
   const key = DAY_KEY.exec(dayKeyOrIso);
