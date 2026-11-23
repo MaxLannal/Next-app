@@ -24,6 +24,11 @@ export type CreateAttachmentInput = {
   /** Where the file lives in the GitHub repo. A file that came from there starts out synced. */
   repoPath?: string;
   extractedText?: string;
+  /**
+   * False for a bulk import (files arriving from GitHub): `onAttachmentCreated` handlers are not
+   * run, so importing a repo doesn't queue a push for every file it holds.
+   */
+  notify?: boolean;
 };
 
 export type AttachmentFilter = { sessionId?: number; unfiled?: boolean; source?: Attachment['source'] };
@@ -189,7 +194,7 @@ export function createAttachment(ctx: AppContext, input: CreateAttachmentInput):
   }
 
   const created = getAttachment(ctx, id)!;
-  for (const handler of onAttachmentCreated) {
+  for (const handler of input.notify === false ? [] : onAttachmentCreated) {
     try {
       handler(ctx, created);
     } catch (err) {

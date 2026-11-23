@@ -51,6 +51,29 @@ it('start, pause, resume, stop', async () => {
   expect(stopped.events.map((e) => e.type)).toEqual(['start', 'pause', 'resume', 'stop']);
 });
 
+it('stores the GitHub folder once at creation', async () => {
+  const folder = (id: number) =>
+    (t.db.prepare('SELECT repo_folder FROM focus_sessions WHERE id = ?').get(id) as { repo_folder: string | null })
+      .repo_folder;
+
+  const s = await start({ name: 'Ch. 4 exercises' });
+  // The clock is 2026-11-22T18:00Z: 12:00 in Chicago.
+  expect(folder(s.id)).toBe('sessions/2026-11-22_ch-4-exercises');
+
+  await t.req('PATCH', `/api/sessions/${s.id}`, { name: 'Renamed after the fact' });
+  expect(folder(s.id)).toBe('sessions/2026-11-22_ch-4-exercises');
+
+  // A session made by hand gets its folder from the day it started.
+  const manual = await t.req('POST', '/api/sessions/manual', {
+    name: '微积分复习',
+    startedAt: '2026-11-20T15:00:00.000Z',
+    endedAt: '2026-11-20T16:00:00.000Z',
+  });
+  expect(manual.status).toBe(201);
+  const made = (await manual.json()) as FocusSession;
+  expect(folder(made.id)).toBe('sessions/2026-11-20_session');
+});
+
 it('only one open session', async () => {
   await start();
   const second = await t.req('POST', '/api/sessions', { name: 'Second' });

@@ -229,7 +229,7 @@ describe('HEIC previews', () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    t.fakes.mac.convertImage = async (_src, dest) => {
+    t.fakes.mac.convertImage = async (_src: string, dest: string) => {
       await gate;
       writeFileSync(dest, 'jpeg');
     };

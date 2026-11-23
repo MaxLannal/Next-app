@@ -1,7 +1,8 @@
 import { Hono, type Context } from 'hono';
 import type { FocusSession, SessionEvent, SessionFilters } from '../../shared/types.ts';
 import type { AppContext } from '../context.ts';
-import { assertTimeZone } from '../lib/time.ts';
+import { sessionFolder } from '../lib/slug.ts';
+import { assertTimeZone, dayKey } from '../lib/time.ts';
 import {
   appendEvent,
   getEvents,
@@ -100,8 +101,8 @@ function createSession(
     const subjectId = fields.subjectName ? upsertSubject(ctx.db, fields.subjectName).id : null;
     const { lastInsertRowid } = ctx.db
       .prepare(
-        `INSERT INTO focus_sessions (name, subject_id, goal_id, status, started_at, ended_at, focus_seconds, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+        `INSERT INTO focus_sessions (name, subject_id, goal_id, status, started_at, ended_at, focus_seconds, repo_folder, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
       )
       .run(
         fields.name,
@@ -110,6 +111,8 @@ function createSession(
         status,
         startedAt.toISOString(),
         endedAt?.toISOString() ?? null,
+        // Fixed at creation, so renaming the session never moves its GitHub folder.
+        sessionFolder(dayKey(startedAt, ctx.timeZone()), fields.name),
         ctx.now().toISOString(),
       );
     const id = Number(lastInsertRowid);
