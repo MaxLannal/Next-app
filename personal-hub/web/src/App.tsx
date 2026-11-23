@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router';
+import { ChatSidebar } from './components/chat/ChatSidebar.tsx';
 import { LoginGate } from './components/LoginGate.tsx';
 import { Nav } from './components/Nav.tsx';
 import { NavTimer } from './components/NavTimer.tsx';
@@ -32,6 +33,7 @@ export function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
+      <ChatSidebar />
       <LoginGate />
     </>
   );

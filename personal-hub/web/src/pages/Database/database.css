@@ -1,5 +1,5 @@
-/* Database: filters | sessions | chat's place, over the slate. Ruled rather than
-   boxed inside one glass sheet; pills, chips and the lit edge come from base.css. */
+/* Database: filters | sessions, over the slate (the chat is the app shell's panel). Ruled
+   rather than boxed inside one glass sheet; pills, chips and the lit edge come from base.css. */
 
 .db__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 2.5rem; }
 .db__title { font: var(--display-weight) var(--text-section)/1.05 var(--font-display); letter-spacing: var(--tracking-display); }
@@ -7,24 +7,19 @@
 .db__note { padding: var(--space-lg); color: var(--color-muted); font-size: var(--text-sm); }
 
 /* ── Columns ────────────────────────────────────────────────────────────── */
-.db__grid { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) 0; gap: var(--space-lg); margin-top: var(--space-xl); }
+.db__grid { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: var(--space-lg); margin-top: var(--space-xl); }
 .db__filters { position: sticky; top: calc(var(--nav-h) + var(--space-md)); align-self: start; max-height: calc(100svh - var(--nav-h) - var(--space-lg)); overflow: auto; overscroll-behavior: contain; padding-right: var(--space-xs); }
-.db__grid--list { grid-template-areas: "filters list chat"; }
+.db__grid--list { grid-template-areas: "filters list"; }
 .db__grid--list > .db__filters { grid-area: filters; }
 .db__grid--list > .db__list { grid-area: list; }
-.db__grid--list > .db__chat-slot { grid-area: chat; }
 /* One session: no filter column, the detail where the sessions were. */
 .db__grid--detail { grid-template-columns: minmax(0, 1fr); grid-template-areas: "list"; }
-.db__grid--detail > .db__chat-slot { display: none; }
 .db__list { display: flex; flex-direction: column; gap: var(--space-lg); min-width: 0; grid-area: list; }
-.db__chat-slot { min-width: 0; }
 .db__github-slot:empty { display: none; }
 .db__github-slot { margin-bottom: var(--space-xs); }
 
 @media (min-width: 90rem) {
-  .db__grid--list { grid-template-columns: minmax(0, 16rem) minmax(0, 1fr) minmax(0, 22rem); }
-  .db__grid--detail { grid-template-columns: minmax(0, 1fr) minmax(0, 22rem); grid-template-areas: "list chat"; }
-  .db__grid--detail > .db__chat-slot { display: block; }
+  .db__grid--list { grid-template-columns: minmax(0, 16rem) minmax(0, 1fr); }
 }
 
 /* ── Filters ────────────────────────────────────────────────────────────── */
@@ -209,10 +204,8 @@
 @media (max-width: 75rem) {
   .db__grid--list, .db__grid--detail { grid-template-columns: minmax(0, 1fr); grid-template-areas: "filters" "list"; }
   .db__grid--detail { grid-template-areas: "list"; }
-  .db__grid--detail > .db__chat-slot { display: none; }
   .db__filters { position: static; max-height: none; overflow: visible; padding-right: 0; }
   .db__filters .db-filters { gap: var(--space-md); }
-  .db__chat-slot { display: none; }
 }
 @media (max-width: 40rem) {
   .db-card__body { flex-direction: column; gap: var(--space-sm); }

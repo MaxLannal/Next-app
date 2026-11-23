@@ -1,0 +1,133 @@
+/* The chat: one smoked-glass panel on the slate, right of every page, with its lit top edge.
+   Inside it nothing is glass again: the user's questions sit on paper-3, Claude's answers are
+   unboxed, the list of chats is solid paper-2. Glass, pills and focus rings come from base.css. */
+
+:root { --chat-gap: 12px; }
+
+/* ── Room for the panel: the page and the fixed parts keep clear of it ─── */
+@media (min-width: 900px) {
+  body { padding-right: var(--chat-space, 0px); }
+  .nav { right: var(--chat-space, 0px); }
+  .nav-timer__error { right: calc(var(--gutter) + var(--chat-space, 0px)); }
+}
+
+/* ── The panel and its rail ─────────────────────────────────────────────── */
+.glass.chat { position: fixed; z-index: var(--z-sticky-nav); display: flex; flex-direction: column; color: var(--color-ink); }
+.chat--panel, .chat--rail { top: var(--chat-gap); right: var(--chat-gap); bottom: var(--chat-gap); }
+.chat--panel { width: var(--chat-w, 400px); }
+.chat--rail { width: 48px; align-items: center; gap: var(--space-xs); padding-block: var(--space-sm); }
+
+/* The left edge: drag it, or focus it and use the arrow keys. */
+.chat__edge { position: absolute; top: var(--radius-card); bottom: var(--radius-card); left: -6px; z-index: 1; width: 12px; border-radius: 6px; cursor: col-resize; touch-action: none; }
+.chat__edge::after { content: ""; position: absolute; top: 50%; left: 5px; width: 2px; height: 40px; margin-top: -20px; border-radius: 1px; background: color-mix(in oklab, var(--color-light) 22%, transparent); opacity: 0; transition: opacity var(--dur-short) var(--ease-out); }
+.chat__edge:hover::after, .chat__edge:focus-visible::after, .is-resizing .chat__edge::after { opacity: 1; }
+.chat__edge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-select: none; }
+
+/* ── Head: the title with its ▾, New chat, collapse ─────────────────────── */
+/* In Next.app the head moves the window, like the nav; its controls stay clickable. */
+.chat__head { display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-md) var(--space-sm) var(--space-sm) var(--space-lg); border-bottom: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); -webkit-app-region: drag; }
+.chat__head button, .chat__head a, .chat-convs__pop { -webkit-app-region: no-drag; }
+
+.chat__icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius-pill); background: none; color: var(--color-ink-2); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
+.chat__icon:hover { background: color-mix(in oklab, var(--color-light) 8%, transparent); color: var(--color-ink); }
+.chat__icon:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.chat-convs { position: relative; flex: 1; min-width: 0; }
+.chat-convs__trigger { display: inline-flex; align-items: center; gap: var(--space-sm); max-width: 100%; margin-left: calc(-1 * var(--space-sm)); padding: 6px var(--space-sm); border: 0; border-radius: var(--radius-inner); background: none; color: var(--color-ink); font: var(--display-weight) 1.0625rem/1.3 var(--font-display); letter-spacing: -0.01em; cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
+.chat-convs__trigger:hover, .chat-convs__trigger[aria-expanded="true"] { background: color-mix(in oklab, var(--color-light) 6%, transparent); }
+.chat-convs__trigger:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.chat-convs__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-convs__caret { flex: none; color: var(--color-muted); transition: transform var(--dur-short) var(--ease-out); }
+.chat-convs__trigger[aria-expanded="true"] .chat-convs__caret { transform: rotate(180deg); }
+
+.chat-convs__pop { position: absolute; top: calc(100% + 6px); left: calc(-1 * var(--space-sm)); z-index: var(--z-dropdown); width: min(340px, calc(var(--chat-w, 400px) - 2 * var(--space-lg))); max-height: min(420px, 60svh); overflow: auto; overscroll-behavior: contain; padding: var(--space-xs); border-radius: var(--radius-inner); background: var(--color-paper-2); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 8%, transparent), 0 24px 48px -16px color-mix(in oklab, var(--color-shade) 85%, transparent); animation: chat-drop var(--dur-short) var(--ease-out); }
+@keyframes chat-drop { from { opacity: 0; transform: translateY(-4px); } }
+.chat-convs__none { padding: var(--space-sm) var(--space-md); color: var(--color-muted); font-size: var(--text-sm); }
+.chat-convs__list { margin: 0; padding: 0; list-style: none; }
+.chat-convs__row { display: flex; align-items: center; border-radius: 8px; }
+.chat-convs__row:hover, .chat-convs__row:focus-within, .chat-convs__row.is-current { background: color-mix(in oklab, var(--color-light) 5%, transparent); }
+.chat-convs__open { flex: 1; min-width: 0; display: grid; gap: 2px; padding: var(--space-sm) 10px; border: 0; border-radius: 8px; background: none; color: var(--color-ink-2); text-align: left; cursor: pointer; }
+.chat-convs__row.is-current .chat-convs__open { color: var(--color-ink); }
+.chat-convs__open:focus-visible, .chat-convs__delete:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.chat-convs__name { overflow: hidden; font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+.chat-convs__when { color: var(--color-muted); font-size: var(--text-xs); }
+.chat-convs__delete { flex: none; margin-right: var(--space-xs); padding: 6px var(--space-sm); border: 0; border-radius: var(--radius-pill); background: none; color: var(--color-muted); font: 500 var(--text-xs)/1 var(--font-body); cursor: pointer; opacity: 0; transition: opacity var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
+.chat-convs__row:hover .chat-convs__delete, .chat-convs__row:focus-within .chat-convs__delete { opacity: 1; }
+.chat-convs__delete:hover { color: var(--color-accent-2); }
+
+/* ── The conversation ───────────────────────────────────────────────────── */
+.chat__log { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-md); padding: var(--space-lg); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--color-light) 18%, transparent) transparent; }
+.chat__turns { display: flex; flex-direction: column; gap: var(--space-lg); margin: 0; padding: 0; list-style: none; }
+.chat-msg { min-width: 0; font-size: 0.9375rem; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.chat-msg--user { align-self: flex-end; max-width: 88%; padding: 10px 14px; border-radius: 16px 16px 4px 16px; background: var(--color-paper-3); color: var(--color-ink); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-msg--assistant { color: var(--color-ink); animation: chat-rise var(--dur-long) var(--ease-out) both; }
+@keyframes chat-rise { from { opacity: 0; transform: translateY(4px); } }
+
+/* Claude's Markdown: quiet type, tables ruled, math in KaTeX, code on paper-2. */
+.chat-md { overflow-wrap: anywhere; }
+.chat-md > * + * { margin-top: 0.75em; }
+.chat-md p, .chat-md ul, .chat-md ol, .chat-md blockquote, .chat-md pre, .chat-md table { margin-bottom: 0; }
+.chat-md ul, .chat-md ol { padding-left: 1.25em; }
+.chat-md li + li { margin-top: 0.25em; }
+.chat-md li::marker { color: var(--color-muted); }
+.chat-md h1, .chat-md h2, .chat-md h3, .chat-md h4 { font: var(--display-weight) 1.0625rem/1.3 var(--font-display); letter-spacing: -0.01em; }
+.chat-md strong { font-weight: 600; color: var(--color-ink); }
+.chat-md a { color: var(--color-accent-hi); }
+.chat-md a:hover { color: var(--color-accent-soft); }
+.chat-md blockquote { margin-left: 0; padding-left: var(--space-md); border-left: 2px solid var(--color-rule); color: var(--color-ink-2); }
+.chat-md hr { border: 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 8%, transparent); }
+.chat-md code { padding: 0.1em 0.35em; border-radius: 5px; background: var(--color-paper-2); font: 0.875em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.chat-md pre { overflow-x: auto; padding: var(--space-md); border-radius: var(--radius-inner); background: var(--color-paper-2); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 6%, transparent); }
+.chat-md pre code { padding: 0; background: none; font-size: 0.8125rem; }
+/* A wide table scrolls sideways rather than breaking its words. */
+.chat-md table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: var(--text-sm); overflow-wrap: normal; }
+.chat-md th, .chat-md td { padding: 6px 12px 6px 0; border-bottom: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); text-align: left; vertical-align: top; }
+.chat-md th { color: var(--color-muted); font-weight: 500; white-space: nowrap; }
+.chat-md .katex-display { overflow-x: auto; overflow-y: hidden; padding-block: 2px; }
+
+/* The tool line: a periwinkle dot breathes while Claude reads the hub. */
+.chat__tool { display: flex; align-items: center; gap: var(--space-sm); color: var(--color-muted); font-size: var(--text-sm); }
+.chat__dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-accent) 20%, transparent); animation: chat-breathe 1.6s var(--ease-in-out) infinite; }
+@keyframes chat-breathe { 50% { opacity: 0.45; transform: scale(0.8); } }
+
+.chat__error { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); padding: var(--space-md); border-radius: var(--radius-inner); background: color-mix(in oklab, var(--color-light) 4%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 7%, transparent); }
+.chat__error p { flex: 1 1 14rem; color: var(--color-accent-2); font-size: var(--text-sm); }
+.chat__after { display: flex; gap: var(--space-sm); }
+
+.chat__empty { display: grid; justify-items: start; gap: var(--space-sm); margin-block: auto; padding-bottom: var(--space-xl); }
+.chat__empty-title { font: var(--display-weight) var(--text-lg)/1.3 var(--font-display); letter-spacing: var(--tracking-display); text-wrap: balance; }
+.chat__empty-line { max-width: 38ch; color: var(--color-muted); font-size: var(--text-sm); }
+.chat__empty .btn { margin-top: var(--space-xs); }
+.chat__examples { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-sm); margin-top: var(--space-sm); }
+.chat__examples .btn { height: auto; padding-block: var(--space-sm); line-height: 1.3; text-align: left; white-space: normal; }
+
+/* ── Composer: field and Send in one pill, smoked glass on slate ────────── */
+.chat__composer { display: flex; align-items: flex-end; gap: var(--space-sm); margin: 0 var(--space-md) var(--space-md); padding: 5px 5px 5px var(--space-md); border-radius: 23px; background: color-mix(in oklab, var(--color-light) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 14%, transparent); transition: box-shadow var(--dur-short) var(--ease-out); }
+.chat__composer:focus-within { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
+.chat__field { flex: 1; min-width: 0; min-height: 38px; max-height: 200px; padding: 8px 0; border: 0; background: transparent; color: var(--color-ink); font: 400 0.9375rem/1.45 var(--font-body); resize: none; outline: none; }
+.chat__field::placeholder { color: var(--color-muted); }
+.chat__field:disabled { cursor: not-allowed; }
+.chat__send { flex: none; }
+
+/* ── Under 900 px: the Ask pill, and the chat as a sheet ────────────────── */
+.chat-ask { position: fixed; right: var(--gutter); bottom: calc(var(--space-md) + env(safe-area-inset-bottom)); z-index: var(--z-sticky); display: inline-flex; align-items: center; gap: var(--space-sm); min-height: 44px; padding: 0 var(--space-lg) 0 var(--space-md); border: 0; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--color-paper-2) 78%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3); box-shadow: var(--glass-hi), 0 12px 32px -12px color-mix(in oklab, var(--color-shade) 85%, transparent); color: var(--color-ink); font: 600 0.9375rem/1 var(--font-body); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
+.chat-ask:hover { background: color-mix(in oklab, var(--color-paper-3) 88%, transparent); }
+.chat-ask:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
+
+.chat-backdrop { position: fixed; inset: 0; z-index: var(--z-modal); background: color-mix(in oklab, var(--color-shade) 62%, transparent); animation: fade-in var(--dur-short) var(--ease-out); }
+.glass.chat--sheet { inset: var(--space-xl) 0 0; border-radius: var(--radius-card) var(--radius-card) 0 0; padding-bottom: env(safe-area-inset-bottom); animation: chat-up var(--dur-long) var(--ease-out); }
+.chat--sheet .chat__head { -webkit-app-region: no-drag; }
+@keyframes chat-up { from { opacity: 0; transform: translateY(24px); } }
+@media (min-width: 600px) {
+  .glass.chat--sheet { inset: var(--space-md) var(--space-md) var(--space-md) auto; width: min(480px, calc(100vw - 2 * var(--space-md))); border-radius: var(--radius-card); padding-bottom: 0; }
+}
+
+/* ── Print and reduced motion ───────────────────────────────────────────── */
+@media print {
+  .chat, .chat-ask, .chat-backdrop { display: none !important; }
+  body { padding-right: 0 !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat__dot, .chat-msg--assistant, .chat-convs__pop, .glass.chat--sheet { animation: none; }
+}
