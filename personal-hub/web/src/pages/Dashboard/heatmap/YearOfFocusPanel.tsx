@@ -110,12 +110,25 @@ function years(have: number[], current: number): number[] {
 }
 
 function PieView({ view, day, pinned }: { view: View; day: HeatmapDay | undefined; pinned: boolean }) {
-  const path = subjectsPath(view);
-  const query = useQuery({
-    queryKey: ['subjects', 'year', path],
-    queryFn: ({ signal }) => api<SubjectSlice[]>(path, { signal }),
+  // The year's query stays mounted under the day's, so neither is unmounted when the
+  // ring flips back — an unmount would drop the cache entry and refetch it on return.
+  // A hovered day is asked for once per session: a refetch on every remount would
+  // flash the previous ring on a pointer that moves through the grid.
+  const yearPath = subjectsPath({ kind: 'year', year: view.year });
+  const year = useQuery({
+    queryKey: ['subjects', 'year', yearPath],
+    queryFn: ({ signal }) => api<SubjectSlice[]>(yearPath, { signal }),
+    staleTime: Infinity,
   });
-  const slices = query.data ?? [];
+  const dayPath = subjectsPath(view);
+  const onDay = useQuery({
+    queryKey: ['subjects', 'day', dayPath],
+    queryFn: ({ signal }) => api<SubjectSlice[]>(dayPath, { signal }),
+    enabled: view.kind === 'day',
+    staleTime: Infinity,
+  });
+  const shown = view.kind === 'day' ? onDay : year;
+  const slices = shown.data ?? [];
   const total = slices.reduce((sum, s) => sum + s.seconds, 0);
   const when = view.kind === 'year' ? String(view.year) : formatShortDate(view.date);
 
@@ -136,20 +149,17 @@ function PieView({ view, day, pinned }: { view: View; day: HeatmapDay | undefine
         {pinned && <span className="yof__pin">pinned — Esc to release</span>}
       </p>
       <PieLegend slices={slices} />
-      {query.isError && <p className="yof__where">Couldn’t load the subjects — retry</p>}
+      {shown.isError && <p className="yof__where">Couldn’t load the subjects — retry</p>}
     </div>
   );
 }
 
 function Tally({ stats }: { stats: HeatmapStats['totals'] }) {
-  const [hours, minutes] = wholeHoursMinutes(stats.seconds);
   return (
     <dl className="yof__tally" aria-label="Year totals">
       <div>
         <dt>Total hours</dt>
-        <dd>
-          {hours} h {minutes} m
-        </dd>
+        <dd>{formatDuration(stats.seconds)}</dd>
       </div>
       <div>
         <dt>Active days</dt>
@@ -165,10 +175,4 @@ function Tally({ stats }: { stats: HeatmapStats['totals'] }) {
       </div>
     </dl>
   );
-}
-
-/** `4785` → `[1, 19]`, hours and whole minutes. */
-function wholeHoursMinutes(seconds: number): [number, number] {
-  const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
-  return [Math.floor(total / 3600), Math.floor(total / 60) % 60];
 }

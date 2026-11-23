@@ -96,6 +96,63 @@ describe('YearOfFocusPanel', () => {
     await waitFor(() => expect(screen.getByRole('img', { name: 'Focus by subject in 2026' })).toBeTruthy());
   });
 
+  it('asks for a hovered day once, then serves it from the cache', async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubHub({
+      ...yearRequests,
+      'GET /api/stats/subjects?range=day&date=2026-11-03': () => json([...algebra, ...essay]),
+    });
+    renderPanel();
+
+    const grid = await screen.findByRole('grid');
+    const cell = grid.querySelector('rect[data-date="2026-11-03"]');
+    if (!(cell instanceof SVGElement)) throw new Error('no cell');
+    const dayRequests = () => fetchMock.mock.calls.filter(([path]) => path === '/api/stats/subjects?range=day&date=2026-11-03').length;
+
+    // Hover, leave (the year again), come back: the reply is fetched only once.
+    await user.hover(cell);
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Focus by subject on Tue 3 Nov' })).toBeTruthy());
+    await user.unhover(cell);
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Focus by subject in 2026' })).toBeTruthy());
+    await user.hover(cell);
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Focus by subject on Tue 3 Nov' })).toBeTruthy());
+    expect(dayRequests()).toBe(1);
+  });
+
+  it('shows a hovered day with no focus as an empty ring, not an error', async () => {
+    const user = userEvent.setup();
+    stubHub({
+      ...yearRequests,
+      // The grid says the day has focus; the subjects reply has none to show.
+      'GET /api/stats/subjects?range=day&date=2026-11-03': () => json([]),
+    });
+    renderPanel();
+
+    const grid = await screen.findByRole('grid');
+    const cell = grid.querySelector('rect[data-date="2026-11-03"]');
+    if (!(cell instanceof SVGElement)) throw new Error('no cell');
+    await user.hover(cell);
+
+    const ring = await screen.findByRole('img', { name: 'Focus by subject on Tue 3 Nov' });
+    expect(ring.querySelectorAll('path[data-slice]')).toHaveLength(0);
+    expect(ring.querySelectorAll('circle')).toHaveLength(1);
+    const side = screen.getByLabelText('Year totals').parentElement;
+    expect(side?.textContent).not.toContain('retry');
+    expect(screen.queryByRole('listitem')).toBeNull();
+    // The ring holes says the day's time; its legend, with nothing to split, is absent.
+    expect(ring.querySelector('.pie__bottom')?.textContent).toBe('focus that day');
+  });
+
+  it('writes the tally in the app’s duration format', async () => {
+    stubHub({
+      ...yearRequests,
+      'GET /api/stats/heatmap?year=2026': () => json({ ...stats, totals: { seconds: 0, activeDays: 0, longestStreak: 0, currentStreak: 0 } }),
+    });
+    renderPanel();
+
+    await waitFor(() => expect(screen.getByLabelText('Year totals').textContent).toContain('Total hours0 m'));
+  });
+
   it('pins a clicked day until Esc', async () => {
     const user = userEvent.setup();
     stubHub({

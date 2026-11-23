@@ -91,7 +91,7 @@ export function Heatmap({ year, days, onActiveDay, describe, label, pinned, onPi
   };
   useEffect(() => {
     placeTip(svgRef.current?.parentElement?.scrollLeft ?? 0);
-  }, [active]);
+  }, [active, hovered]);
 
   // Report changes only: not the initial null and not every re-render. Compared
   // by content, so a parent passing a fresh `days` array each render can't loop.
