@@ -73,8 +73,8 @@ The hub passcode and token, the iPhone Shortcut instructions for sleep, Tailscal
 ## Getting started
 
 ```bash
-git clone https://github.com/MaxLannal/Next.git
-cd Next
+git clone https://github.com/MaxLannal/Next-app.git
+cd Next-app
 npm install
 npm run setup
 ```
