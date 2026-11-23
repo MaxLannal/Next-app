@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono';
-import type { FocusSession, SessionEvent, SessionFilters } from '../../shared/types.ts';
+import type { AttachmentKind, FocusSession, SessionEvent, SessionFilters } from '../../shared/types.ts';
 import type { AppContext } from '../context.ts';
 import { assertTimeZone } from '../lib/time.ts';
 import {
@@ -22,6 +22,8 @@ const TRANSITIONS: Record<'pause' | 'resume' | 'stop', FocusSession['status']> =
   resume: 'paused',
   stop: 'running',
 };
+
+const KINDS: readonly AttachmentKind[] = ['image', 'pdf', 'code', 'text', 'latex', 'other'];
 
 const isId = (raw: string): number | null => (/^[1-9][0-9]*$/.test(raw) ? Number(raw) : null);
 const isDay = (v: unknown): v is string =>
@@ -138,6 +140,15 @@ function parseFilters(q: Record<string, string>): { error: string } | { filters:
     }
   }
   if (q.tag !== undefined) filters.tag = q.tag;
+  if (q.kind !== undefined) {
+    if (!KINDS.includes(q.kind as AttachmentKind)) return { error: 'Bad kind' };
+    filters.kind = q.kind as AttachmentKind;
+  }
+  if (q.source !== undefined) {
+    if (q.source !== 'upload' && q.source !== 'github') return { error: 'Bad source' };
+    filters.source = q.source;
+  }
+  if (q.q !== undefined) filters.q = q.q;
   if (q.sort !== undefined) {
     if (q.sort !== 'created' && q.sort !== 'subject' && q.sort !== 'duration') return { error: 'Bad sort' };
     filters.sort = q.sort;

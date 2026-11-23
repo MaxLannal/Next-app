@@ -3,7 +3,7 @@ import { Link, Route, Routes, useLocation } from 'react-router';
 import { LoginGate } from './components/LoginGate.tsx';
 import { Nav } from './components/Nav.tsx';
 import { Dashboard } from './pages/Dashboard/Dashboard.tsx';
-import { DatabasePage } from './pages/Database/DatabasePage.tsx';
+import { DatabasePage, SessionPage } from './pages/Database/DatabasePage.tsx';
 import { EssaysPage } from './pages/Essays/EssaysPage.tsx';
 import { SettingsPage } from './pages/Settings/SettingsPage.tsx';
 
@@ -25,7 +25,7 @@ export function App() {
           <Route path="/essays" element={<EssaysPage />} />
           <Route path="/essays/:id" element={<EssaysPage />} />
           <Route path="/database" element={<DatabasePage />} />
-          <Route path="/database/session/:id" element={<DatabasePage />} />
+          <Route path="/database/session/:id" element={<SessionPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

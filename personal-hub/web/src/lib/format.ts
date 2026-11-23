@@ -35,6 +35,14 @@ export function formatTime(iso: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** A file size: `"812 B"`, `"14 KB"`, `"1.4 MB"`. */
+export function sizeOf(bytes: number): string {
+  const n = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** `"Sun 22 Nov"`. A day key (`2026-11-22`) is that calendar day; an instant is its local day. */
 export function formatShortDate(dayKeyOrIso: string): string {
   const key = DAY_KEY.exec(dayKeyOrIso);
