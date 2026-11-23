@@ -99,6 +99,11 @@ it('subjects reuse case-insensitively', async () => {
   expect(created.status).toBe(200);
   expect(await created.json()).toEqual({ id: a.subject!.id, name: 'Algebra' });
 
+  // Only the case differs, so this is not a new subject either.
+  const recase = await t.req('POST', '/api/subjects', { name: 'algEBra' });
+  expect(recase.status).toBe(200);
+  expect(await recase.json()).toEqual({ id: a.subject!.id, name: 'Algebra' });
+
   const list = await t.req('GET', '/api/subjects');
   expect(await list.json()).toEqual([{ id: a.subject!.id, name: 'Algebra' }]);
 });
@@ -124,6 +129,58 @@ it('editing end time recomputes', async () => {
     { type: 'pause', at: '2026-11-22T15:40:00.000Z' },
     { type: 'stop', at: '2026-11-22T15:50:00.000Z' },
   ]);
+});
+
+it('moving a paused session stays paused and closed', async () => {
+  t.setNow('2026-11-22T15:00:00.000Z');
+  const s = await start();
+  t.setNow('2026-11-22T15:30:00.000Z');
+  await act(s.id, 'pause');
+
+  // Starting later would leave the pause outside the new bounds; it must not vanish.
+  t.setNow('2026-11-22T16:00:00.000Z');
+  const res = await t.req('PATCH', `/api/sessions/${s.id}`, { startedAt: '2026-11-22T15:40:00.000Z' });
+  expect(res.status).toBe(200);
+  const patched = (await res.json()) as FocusSession;
+  expect(patched.status).toBe('paused');
+  expect(patched.focusSeconds).toBe(0);
+  expect(patched.startedAt).toBe('2026-11-22T15:40:00.000Z');
+  expect(patched.events).toEqual([
+    { type: 'start', at: '2026-11-22T15:40:00.000Z' },
+    { type: 'pause', at: '2026-11-22T15:40:00.000Z' },
+  ]);
+});
+
+it('ending a paused session with an edit keeps its focus time', async () => {
+  t.setNow('2026-11-22T15:00:00.000Z');
+  const s = await start();
+  t.setNow('2026-11-22T15:30:00.000Z');
+  await act(s.id, 'pause');
+  t.setNow('2026-11-22T20:00:00.000Z');
+  const res = await t.req('PATCH', `/api/sessions/${s.id}`, { endedAt: '2026-11-22T15:45:00.000Z' });
+  expect(res.status).toBe(200);
+  const patched = (await res.json()) as FocusSession;
+  expect(patched.status).toBe('paused');
+  expect(patched.focusSeconds).toBe(1800);
+  expect(patched.endedAt).toBe('2026-11-22T15:45:00.000Z');
+});
+
+it('an auto-paused session keeps its pause when times are edited', async () => {
+  t.setNow('2026-11-22T15:00:00.000Z');
+  const s = await start();
+  t.setNow('2026-11-22T15:30:00.000Z');
+  await act(s.id, 'pause');
+  t.db.prepare("UPDATE focus_sessions SET auto_paused_at = '2026-11-22T15:30:00.000Z' WHERE id = ?").run(s.id);
+
+  t.setNow('2026-11-22T16:00:00.000Z');
+  const res = await t.req('PATCH', `/api/sessions/${s.id}`, { name: 'Renamed', endedAt: '2026-11-22T15:20:00.000Z', startedAt: '2026-11-22T15:10:00.000Z' });
+  expect(res.status).toBe(200);
+  const patched = (await res.json()) as FocusSession;
+  // The bounds say it ended at 15:20, although the pause was at 15:30.
+  expect(patched.status).toBe('paused');
+  expect(patched.autoPausedAt).toBe('2026-11-22T15:20:00.000Z');
+  expect(patched.focusSeconds).toBe(600);
+  expect(patched.events.at(-1)).toEqual({ type: 'pause', at: '2026-11-22T15:20:00.000Z' });
 });
 
 it('end before start is refused', async () => {

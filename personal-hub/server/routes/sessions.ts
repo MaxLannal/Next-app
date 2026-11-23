@@ -160,7 +160,7 @@ export function sessionRoutes(ctx: AppContext): Hono {
   routes.post('/subjects', async (c) => {
     const { name } = await jsonBody(c);
     if (typeof name !== 'string' || name.trim() === '') return c.json({ error: 'A subject needs a name' }, 400);
-    const before = ctx.db.prepare('SELECT 1 FROM subjects WHERE name = ?').get(name.trim()) !== undefined;
+    const before = ctx.db.prepare('SELECT 1 FROM subjects WHERE name = ? COLLATE NOCASE').get(name.trim()) !== undefined;
     const subject = upsertSubject(ctx.db, name);
     return c.json(subject, before ? 200 : 201);
   });
@@ -265,7 +265,12 @@ export function sessionRoutes(ctx: AppContext): Hono {
 
     transaction(ctx.db, () => {
       applyFields(ctx, id, fields);
-      if (body.startedAt !== undefined || body.endedAt !== undefined) rewriteTimes(ctx.db, id, startedAt, endedAt);
+      if (body.startedAt !== undefined || body.endedAt !== undefined) {
+        const before = ctx.db
+          .prepare('SELECT status, auto_paused_at FROM focus_sessions WHERE id = ?')
+          .get(id) as { status: FocusSession['status']; auto_paused_at: string | null };
+        rewriteTimes(ctx.db, id, startedAt, endedAt, before);
+      }
       recomputeFocus(ctx.db, id, ctx.now());
       });
     return c.json(getSession(ctx.db, id, ctx.now()));
@@ -282,17 +287,45 @@ export function sessionRoutes(ctx: AppContext): Hono {
 
 /**
  * Moves the first `start` to `startedAt` and (when it ends) the last `stop` to `endedAt`,
- * drops events outside the new bounds, and adds the start/stop the bounds imply.
+ * drops events outside the new bounds, and adds the start/stop the bounds imply. A paused
+ * session stays paused even when its only `pause` fell outside the new bounds: the pause is
+ * re-inserted at the last `pause`/`resume`/`auto_paused_at` before the edit, moved inside them.
  */
-function rewriteTimes(db: AppContext['db'], id: number, startedAt: string, endedAt: string | null): void {
-  const from = Date.parse(startedAt);
-  const to = endedAt === null ? Infinity : Date.parse(endedAt);
-  const events = getEvents(db, id).filter((e) => Date.parse(e.at) > from && Date.parse(e.at) < to);
+function rewriteTimes(
+  db: AppContext['db'],
+  id: number,
+  startedAt: string,
+  endedAt: string | null,
+  before: { status: FocusSession['status']; auto_paused_at: string | null },
+): void {
+  const inBounds = (at: string) => at > startedAt && (endedAt === null || at < endedAt);
+  const old = getEvents(db, id);
+  const kept = old.filter((e) => inBounds(e.at));
+
+  const out: SessionEvent[] = [{ type: 'start', at: startedAt }, ...kept];
+  if (endedAt !== null && !kept.some((e) => e.type === 'stop')) out.push({ type: 'stop', at: endedAt });
+
+  // A paused session must still hold the pause that closed its last interval.
+  let autoPausedAt = before.auto_paused_at;
+  if (before.status === 'paused' && !kept.some((e) => e.type === 'pause')) {
+    const sources = [
+      ...old.filter((e) => e.type === 'pause' || e.type === 'resume').map((e) => e.at),
+      ...(before.auto_paused_at ? [before.auto_paused_at] : []),
+    ].sort();
+    const last = sources.at(-1) ?? startedAt;
+    let at = last < startedAt ? startedAt : last;
+    if (endedAt !== null && at > endedAt) at = endedAt;
+    if (last === before.auto_paused_at) autoPausedAt = at;
+    out.push({ type: 'pause', at });
+  }
+
+  out.sort((a, b) => a.at.localeCompare(b.at));
   db.prepare('DELETE FROM session_events WHERE session_id = ?').run(id);
-  const insert = (type: SessionEvent['type'], at: string) =>
-    db.prepare('INSERT INTO session_events (session_id, type, at) VALUES (?, ?, ?)').run(id, type, at);
-  insert('start', startedAt);
-  for (const e of events) insert(e.type, e.at);
-  if (endedAt !== null) insert('stop', endedAt);
-  db.prepare('UPDATE focus_sessions SET started_at = ?, ended_at = ? WHERE id = ?').run(startedAt, endedAt, id);
+  for (const e of out) appendEvent(db, id, e.type, new Date(e.at));
+  db.prepare('UPDATE focus_sessions SET started_at = ?, ended_at = ?, auto_paused_at = ? WHERE id = ?').run(
+    startedAt,
+    endedAt,
+    autoPausedAt,
+    id,
+  );
 }
