@@ -74,8 +74,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .hero__photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 28%; transform-origin: 70% 60%; animation: drift 48s var(--ease-in-out) infinite alternate; }
 @keyframes drift { to { transform: scale(1.06) translate(-1%, 0.5%); } }
 /* The foot of the painting fades to slate below the panels on it. */
-.hero__scrim { position: absolute; inset: 0; background: linear-gradient(to bottom, color-mix(in oklab, var(--color-paper) 0%, transparent) 80%, var(--color-paper) 99%); }
-.hero__grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--space-2xl); align-items: center; padding-top: calc(var(--nav-h) + var(--space-lg)); padding-bottom: var(--space-2xl); }
+.hero__scrim { position: absolute; inset: 0; background: linear-gradient(to bottom, color-mix(in oklab, var(--color-paper) 0%, transparent) 84%, var(--color-paper) 100%); }
+/* Same two columns and gap as the panels below, so the agenda lines up with Focus and the time with Goals. */
+.hero__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); align-items: center; padding-top: calc(var(--nav-h) + var(--space-lg)); padding-bottom: var(--space-xl); }
 .hero__time { position: relative; color: var(--color-day-ink); }
 /* The fog behind the head: a radial scrim tied to the time itself, so it stays behind the
    clock however tall the hero grows. Layered over the photograph, under the text. */
@@ -83,8 +84,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: radial-gradient(closest-side, color-mix(in oklab, var(--color-fog) 78%, transparent), color-mix(in oklab, var(--color-fog) 42%, transparent) 55%, color-mix(in oklab, var(--color-fog) 0%, transparent) 100%); }
 /* Glass over the pale fog needs more smoke than glass over slate to keep muted text readable. */
 .hero__panels { --glass: oklch(20% 0.018 268 / 0.74); }
-.hero__panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "goals focus"; gap: var(--space-lg); padding-bottom: clamp(96px, 14vh, 168px); }
-.hero__agenda { justify-self: end; width: min(100%, 600px); }
+.hero__panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "goals focus"; gap: var(--space-lg); padding-bottom: var(--space-xl); }
+.hero__agenda { justify-self: stretch; width: 100%; }
 
 /* ── Slate: the panels below the hero ───────────────────────────────────── */
 .slate { padding-block: var(--space-lg) var(--space-2xl); }
@@ -151,7 +152,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 @media (max-width: 900px) {
   .slate__grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "heatmap" "sleep" "exercise" "calendar" "resources" "media"; }
-  .hero__panels { grid-template-columns: minmax(0, 1fr); grid-template-areas: "goals" "focus"; padding-bottom: 72px; }
+  .hero__panels { grid-template-columns: minmax(0, 1fr); grid-template-areas: "goals" "focus"; padding-bottom: var(--space-xl); }
 }
 @media (max-width: 40rem) {
   :root { --nav-h: 64px; }
