@@ -73,7 +73,7 @@ export function NotebookPreview({ file }: { file: Attachment }) {
                     className="nb__out-image"
                     key={j}
                     src={`data:${image};base64,${encoded.replaceAll('\n', '')}`}
-                    alt="Notebook output"
+                    alt=""
                   />
                 );
               }

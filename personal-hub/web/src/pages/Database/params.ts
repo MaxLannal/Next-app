@@ -82,9 +82,17 @@ export function writeView({ filters, sort, group }: ViewState): URLSearchParams 
   return params;
 }
 
+/** The day after `day`, as a day key; local dates, so a DST change cannot skip or repeat one. */
+export function nextDay(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const next = new Date(y, m - 1, d + 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+}
+
 /**
  * The filters in the API's shape. `q` only when `withQuery`, so the tag list can show
- * what the other filters hold before the search narrows it. `to` is exclusive, as the API's.
+ * what the other filters hold before the search narrows it. The API's `to` is exclusive;
+ * the page's To field means "up to and including this day", so it sends the next day.
  */
 export function toSessionFilters(filters: FilterState, withQuery: boolean): SessionFilters {
   return {
@@ -94,7 +102,7 @@ export function toSessionFilters(filters: FilterState, withQuery: boolean): Sess
     goalId: filters.goal ?? undefined,
     source: filters.source ?? undefined,
     from: filters.from ?? undefined,
-    to: filters.to ?? undefined,
+    to: filters.to === null ? undefined : nextDay(filters.to),
   };
 }
 

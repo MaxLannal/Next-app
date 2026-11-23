@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import type { AttachmentKind, FocusSession, SessionEvent, SessionFilters } from '../../shared/types.ts';
 import type { AppContext } from '../context.ts';
+import { indexDoc, removeDoc } from '../lib/search.ts';
 import { assertTimeZone } from '../lib/time.ts';
 import {
   appendEvent,
@@ -119,8 +120,21 @@ function createSession(
     if (endedAt) appendEvent(ctx.db, id, 'stop', endedAt);
     if (fields.tags) setTags(ctx.db, id, fields.tags);
     recomputeFocus(ctx.db, id, ctx.now());
+    indexSession(ctx.db, id);
     return id;
   });
+}
+
+/**
+ * Puts the session in the full-text index as `kind = 'session'` (its name as the
+ * title, its notes as the body), so the Database's search finds it by either. Called
+ * inside the write that changed it: a rename or an edited note re-indexes.
+ */
+function indexSession(db: AppContext['db'], id: number): void {
+  const row = db.prepare('SELECT name, notes FROM focus_sessions WHERE id = ?').get(id) as
+    | { name: string; notes: string }
+    | undefined;
+  if (row) indexDoc(db, 'session', id, row.name, row.notes);
 }
 
 function parseFilters(q: Record<string, string>): { error: string } | { filters: SessionFilters } {
@@ -220,6 +234,9 @@ export function sessionRoutes(ctx: AppContext): Hono {
       new Date(body.startedAt),
       new Date(body.endedAt),
     );
+    // Notes are not part of `createSession`: a forgotten session can be logged with them.
+    if (fields.notes !== undefined) applyFields(ctx, id, { notes: fields.notes });
+    indexSession(ctx.db, id);
     return c.json(getSession(ctx.db, id, ctx.now()), 201);
   });
 
@@ -283,6 +300,7 @@ export function sessionRoutes(ctx: AppContext): Hono {
         rewriteTimes(ctx.db, id, startedAt, endedAt, before);
       }
       recomputeFocus(ctx.db, id, ctx.now());
+      indexSession(ctx.db, id);
       });
     return c.json(getSession(ctx.db, id, ctx.now()));
   });
@@ -290,7 +308,9 @@ export function sessionRoutes(ctx: AppContext): Hono {
   routes.delete(`/sessions${ID}`, (c) => {
     const id = Number(c.req.param('id'));
     const { changes } = ctx.db.prepare('DELETE FROM focus_sessions WHERE id = ?').run(id);
-    return Number(changes) > 0 ? c.body(null, 204) : c.json({ error: 'Not found' }, 404);
+    if (Number(changes) === 0) return c.json({ error: 'Not found' }, 404);
+    removeDoc(ctx.db, 'session', id);
+    return c.body(null, 204);
   });
 
   return routes;

@@ -1,5 +1,6 @@
 import type { Attachment } from '@shared/types.ts';
 import { LatexView } from '../../../components/LatexView.tsx';
+import { sizeOf } from '../../../lib/format.ts';
 import { CodePreview } from './CodePreview.tsx';
 import { ImagePreview } from './ImagePreview.tsx';
 import { languageOf } from './languages.ts';
@@ -31,12 +32,25 @@ const isNotebook = (file: Attachment) => file.filename.toLowerCase().endsWith('.
 export function AttachmentPreview({ file, onOpenImage }: AttachmentPreviewProps) {
   if (file.kind === 'image') return <ImagePreview file={file} onOpen={onOpenImage} />;
   if (file.kind === 'pdf') return <PdfPreview file={file} />;
+  // Every text-reading preview (code, notebooks, LaTeX, text) stops at the same size.
+  if (READ_AS_TEXT.has(file.kind) && file.size > TEXT_PREVIEW_LIMIT) return <TooLarge file={file} />;
   if (file.kind === 'latex') return <LatexFile file={file} />;
   if (file.kind === 'code' && isNotebook(file)) return <NotebookPreview file={file} />;
-  if (file.kind === 'code' || (file.kind === 'text' && file.size <= TEXT_PREVIEW_LIMIT)) return <TextFile file={file} />;
+  if (file.kind === 'code' || file.kind === 'text') return <TextFile file={file} />;
   return (
     <div className="pv-download">
-      <p className="pv-note">{file.kind === 'text' ? 'Too large to show here — download it.' : 'No preview for this file.'}</p>
+      <p className="pv-note">No preview for this file.</p>
+      <DownloadLink file={file} />
+    </div>
+  );
+}
+
+const READ_AS_TEXT = new Set<Attachment['kind']>(['code', 'latex', 'text']);
+
+function TooLarge({ file }: { file: Attachment }) {
+  return (
+    <div className="pv-download">
+      <p className="pv-note">Too large to show here — download it ({sizeOf(file.size)}).</p>
       <DownloadLink file={file} />
     </div>
   );

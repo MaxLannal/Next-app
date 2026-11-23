@@ -35,6 +35,7 @@ const ITALIC_KEYS = new Set(['no subject', 'no tag']);
  */
 export function SessionList({ sessions, sort, group, onSort, onGroup }: SessionListProps) {
   const groups = groupSessions(sessions, group);
+  const thumbs = useBatchThumbs(sessions);
 
   return (
     <section className="db-list" aria-label="Sessions">
@@ -63,7 +64,7 @@ export function SessionList({ sessions, sort, group, onSort, onGroup }: SessionL
             </header>
             <ol className="db-cards">
               {g.sessions.map((session, j) => (
-                <SessionCard key={session.id} session={session} delay={Math.min(i + j, 8)} />
+                <SessionCard key={session.id} session={session} thumbs={thumbs(session)} delay={Math.min(i + j, 8)} />
               ))}
             </ol>
           </section>
@@ -73,37 +74,58 @@ export function SessionList({ sessions, sort, group, onSort, onGroup }: SessionL
   );
 }
 
+/** How many thumbnail strips share one read, keeping its URL well inside a sane length. */
+export const THUMB_BATCH = 100;
+
+type Thumbs = { photos: Attachment[]; more: number };
+
 /**
- * Thumbnails are the session's first photos (by attachment id), fetched on their own;
- * a preview the hub hasn't made yet falls back to the original.
+ * Every visible session's first photos, from one `GET /api/attachments?sessionIds=…`:
+ * a card per session would be one request each. Sessions that hold more files than the
+ * read returned say "and more" instead of guessing a count. Files come oldest first,
+ * so a session's first four are the earliest it holds.
  */
-function ThumbStrip({ session }: { session: FocusSession }) {
+function useBatchThumbs(sessions: FocusSession[]): (session: FocusSession) => Thumbs | null {
+  const withFiles = [...new Set(sessions.filter((s) => s.attachmentCount > 0).map((s) => s.id))].slice(0, THUMB_BATCH);
+  const key = withFiles.join(',');
   const query = useQuery({
-    queryKey: ['attachments', 'session', session.id],
-    queryFn: ({ signal }) => api<Attachment[]>(`/api/attachments?sessionId=${session.id}`, { signal }),
-    enabled: session.attachmentCount > 0,
+    queryKey: ['attachments', 'sessionIds', key],
+    queryFn: ({ signal }) => api<Attachment[]>(`/api/attachments?sessionIds=${key}`, { signal }),
+    enabled: withFiles.length > 0,
   });
-  const photos = (query.data ?? []).filter((f) => f.kind === 'image' && f.parentId === null);
-  if (photos.length === 0) return null;
-  const strip = photos.slice(0, 4);
+  const bySession = new Map<number, Thumbs>();
+  for (const file of query.data ?? []) {
+    if (file.kind !== 'image' || file.parentId !== null || file.sessionId === null) continue;
+    const thumbs = bySession.get(file.sessionId) ?? { photos: [], more: 0 };
+    if (thumbs.photos.length < 4) thumbs.photos.push(file);
+    else thumbs.more += 1;
+    bySession.set(file.sessionId, thumbs);
+  }
+  return (session) => bySession.get(session.id) ?? null;
+}
+
+/** The strip of up to four photos. A preview the hub hasn't made yet falls back to the original. */
+function ThumbStrip({ thumbs }: { thumbs: Thumbs }) {
+  const shown = thumbs.photos.length;
+  const total = shown + thumbs.more;
   return (
-    <ul className="db-thumbs" aria-label={`${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`}>
-      {strip.map((file) => (
+    <ul className="db-thumbs" aria-label={`${total} ${total === 1 ? 'photo' : 'photos'}`}>
+      {thumbs.photos.map((file) => (
         <li className="db-thumb" key={file.id}>
           <img src={file.previewUrl ?? file.url} alt="" loading="lazy" />
           <GitHubFileBadge file={file} />
         </li>
       ))}
-      {photos.length > strip.length && (
+      {thumbs.more > 0 && (
         <li className="db-thumb db-thumb--more num" aria-hidden="true">
-          +{photos.length - strip.length}
+          +{thumbs.more}
         </li>
       )}
     </ul>
   );
 }
 
-function SessionCard({ session, delay }: { session: FocusSession; delay: number }) {
+function SessionCard({ session, thumbs, delay }: { session: FocusSession; thumbs: Thumbs | null; delay: number }) {
   const excerpt = session.notes.trim();
   return (
     <li className="rise" style={{ '--d': delay } as CSSProperties}>
@@ -132,7 +154,7 @@ function SessionCard({ session, delay }: { session: FocusSession; delay: number 
               </p>
             )}
           </div>
-          <ThumbStrip session={session} />
+          {thumbs !== null && <ThumbStrip thumbs={thumbs} />}
         </div>
       </Link>
     </li>

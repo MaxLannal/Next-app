@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import type { AttachmentKind, FocusSession, Subject } from '@shared/types.ts';
-import { api } from '../../api.ts';
+import { api, ApiError } from '../../api.ts';
 import { formatDuration } from '../../lib/format.ts';
 import { EMPTY_FILTERS, toSessionFilters, type FilterState } from './params.ts';
 
@@ -28,7 +28,8 @@ const SOURCES: { value: 'upload' | 'github'; label: string }[] = [
   { value: 'github', label: 'From GitHub' },
 ];
 
-const same = (a: string, b: string) => a.toLocaleLowerCase() === b.toLocaleLowerCase();
+/** Tags are matched the way the server matches them: `COLLATE NOCASE`, so by lower case, not locale. */
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /**
  * The Database's left column: search, subject, tags (any of the chosen), a date range,
@@ -130,35 +131,46 @@ function SubjectFilter({ value, onChange }: { value: number | null; onChange: (i
   );
 }
 
+/** Just the fields the goal picker reads, so a partial goal row (Task 9's shape) still fits. */
+export type GoalOption = { id: number; title: string };
+
 /**
- * The goal, typed over a list of the goals that come up in scope. A goal whose id is
- * unknown (a session from last year, say) can still be picked by typing its id.
+ * The goal, chosen from the open goals (Task 9's `GET /api/goals?status=open`), each as
+ * "title". Until that route exists it answers 404, and the picker stays a quiet
+ * "No goal" choice rather than an error. A goal the list doesn't hold (finished since,
+ * or an old session's) stays in the list while it is chosen, by its id.
  */
-function GoalFilter({ value, onChange }: { value: number | null; onChange: (id: number | null) => void }) {
+export function GoalFilter({ value, onChange }: { value: number | null; onChange: (id: number | null) => void }) {
+  const query = useQuery({
+    queryKey: ['goals', 'open'],
+    queryFn: ({ signal }) => api<GoalOption[]>('/api/goals?status=open', { signal }),
+    // A 404 means Task 9 isn't here yet; asking again this session won't change that.
+    retry: (failures, err) => !(err instanceof ApiError && err.status === 404) && failures < 1,
+  });
   const id = useId();
-  const [text, setText] = useState(value === null ? '' : String(value));
-  const listId = useId();
-  useEffect(() => setText(value === null ? '' : String(value)), [value]);
+  const goals = query.data ?? [];
+  const known = goals.some((goal) => goal.id === value);
   return (
     <div className="db-field">
       <label className="db-field__label" htmlFor={id}>
-        Goal id
+        Goal
       </label>
-      <input
+      <select
         id={id}
         className="db-field__input"
-        inputMode="numeric"
-        list={listId}
-        value={text}
-        placeholder="Any goal"
-        onChange={(e) => {
-          setText(e.target.value);
-          const trimmed = e.target.value.trim();
-          if (trimmed === '') onChange(null);
-          else if (/^[1-9][0-9]*$/.test(trimmed)) onChange(Number(trimmed));
-        }}
-      />
-      <datalist id={listId} />
+        value={value ?? ''}
+        aria-busy={query.isLoading}
+        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+      >
+        <option value="">{query.isError ? 'No goal' : 'Any goal'}</option>
+        {goals.map((goal) => (
+          <option key={goal.id} value={goal.id}>
+            {goal.title}
+          </option>
+        ))}
+        {value !== null && !known && <option value={value}>Goal {value}</option>}
+      </select>
+      {query.isError && <span className="db-filters__context">The goals list isn’t available yet.</span>}
     </div>
   );
 }
@@ -172,15 +184,17 @@ function TagFilter({ tags, onChange, scope }: { tags: string[]; onChange: (tags:
   const listed = new Map<string, Counted<string>>();
   for (const session of scope) {
     for (const tag of session.tags) {
-      const key = tag.toLocaleLowerCase();
+      const key = tag.toLowerCase();
       const found = listed.get(key);
       if (found) found.seconds += session.focusSeconds;
       else listed.set(key, { value: tag, label: tag, seconds: session.focusSeconds });
     }
   }
-  const options = [...listed.values()].sort((a, b) => b.seconds - a.seconds || a.label.localeCompare(b.label));
+  // Hours first, then by name as the server lists tags (`COLLATE NOCASE`).
+  const byName = (a: string, b: string) => a.toLowerCase().localeCompare(b.toLowerCase());
+  const options = [...listed.values()].sort((a, b) => b.seconds - a.seconds || byName(a.label, b.label));
   for (const tag of tags) {
-    if (!listed.has(tag.toLocaleLowerCase())) options.push({ value: tag, label: tag, seconds: 0 });
+    if (!listed.has(tag.toLowerCase())) options.push({ value: tag, label: tag, seconds: 0 });
   }
 
   const toggle = (tag: string) => {
@@ -203,7 +217,7 @@ function TagFilter({ tags, onChange, scope }: { tags: string[]; onChange: (tags:
           {options.map((tag) => {
             const on = tags.some((t) => same(t, tag.value));
             return (
-              <li key={tag.value}>
+              <li key={tag.value.toLowerCase()}>
                 <button
                   type="button"
                   className={on ? 'db-tag is-on' : 'db-tag'}
@@ -287,6 +301,7 @@ export function scopeOf(all: FocusSession[], filters: FilterState, liveIds: Set<
   const keep = toSessionFilters(filters, false);
   return all.filter((s) => {
     if (keep.from !== undefined && localDay(s.startedAt) < keep.from) return false;
+    // `keep.to` is already the day after the chosen one, so ">=" is "after the chosen day".
     if (keep.to !== undefined && localDay(s.startedAt) >= keep.to) return false;
     if (keep.subjectId !== undefined && s.subject?.id !== keep.subjectId) return false;
     if (keep.goalId !== undefined && s.goalId !== keep.goalId) return false;

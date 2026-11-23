@@ -288,6 +288,24 @@ describe('listing and editing', () => {
     expect((await t.req('GET', '/api/attachments?sessionId=x')).status).toBe(400);
   });
 
+  it('lists several sessions in one read', async () => {
+    const a = insertSession('One');
+    const b = insertSession('Two');
+    const c = insertSession('Three');
+    const [a1] = await uploadOk([['a.png', '1']], a);
+    const [a2] = await uploadOk([['a.txt', '2']], a);
+    const [b1] = await uploadOk([['b.png', '3']], b);
+    await uploadOk([['c.png', '4']], c);
+    await uploadOk([['loose.png', '5']]);
+
+    const ids = async (query: string) =>
+      ((await (await t.req('GET', `/api/attachments${query}`)).json()) as Attachment[]).map((x) => x.id);
+    expect(await ids(`?sessionIds=${a},${b}`)).toEqual([a1.id, a2.id, b1.id]);
+    expect(await ids(`?sessionIds=${b}`)).toEqual(await ids(`?sessionId=${b}`));
+    expect(await ids('?sessionIds=')).toEqual([]);
+    expect((await t.req('GET', '/api/attachments?sessionIds=1,x')).status).toBe(400);
+  });
+
   it('patch updates text and session, and re-indexes', async () => {
     const sessionId = insertSession();
     const [a] = await uploadOk([['photo.png', 'png']]);
