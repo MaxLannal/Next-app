@@ -14,7 +14,9 @@ import { formatDayKey, formatDuration, formatShortDate, localDay } from '../../l
 import { AddMenu } from './AddMenu.tsx';
 import { FileIcon } from './FileIcon.tsx';
 import {
+  anchorBox,
   boxOf,
+  detailAt,
   contains,
   EXPERIENCE_H,
   EXPERIENCE_W,
@@ -327,6 +329,12 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
   if (board.isError) return <p className="canvas__state">{messageOf(board.error)}</p>;
   if (!board.data) return <p className="canvas__state" aria-busy="true" />;
 
+  // Zoomed out, cards give way to their titles: `detail` runs from 1 (whole cards) to 0 (titles alone).
+  const k = view?.k ?? 1;
+  const detail = detailAt(k);
+  const titleOf = (n: SkillNode) => (n.kind === 'step' ? n.title || 'Untitled step' : (n.session?.name ?? 'A deleted session'));
+  const anchor = (n: SkillNode) => anchorBox(box(n), titleOf(n), k, detail);
+
   const dragged = drag?.moved ? byId.get(drag.id) : undefined;
   const draggingLayer = dragged && drag ? layerAt(drag.wy + sizeOf(dragged, sizes).h / 2, drag.layout) : null;
 
@@ -341,7 +349,10 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
       onPointerCancel={onUp}
     >
       {view && (
-        <div className="canvas__world" style={{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.k})` }}>
+        <div
+          className={['canvas__world', detail < 1 ? 'is-zoomed-out' : '', detail < 0.5 ? 'is-titles' : ''].join(' ')}
+          style={{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.k})`, '--k': view.k, '--detail': detail } as CSSProperties}
+        >
           {/* Only the lines between stages are drawn: the foundations have no floor, the open stage no ceiling. */}
           {layout.tops.map((top, i) => (
             <div
@@ -360,7 +371,8 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
                 <path
                   key={l.id}
                   className={freshLinks.has(l.id) ? 'link is-fresh' : 'link'}
-                  d={linkPath(box(exp), box(step))}
+                  d={linkPath(anchor(exp), anchor(step))}
+                  style={{ strokeWidth: 2 / k }}
                   pathLength={1}
                   onAnimationEnd={() =>
                     setFreshLinks((f) => {
@@ -380,6 +392,7 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
               <StepNode
                 key={n.id}
                 node={n}
+                label={titleOf(n)}
                 at={b}
                 nodeRef={track}
                 linked={linkedCount.get(n.id) ?? 0}
@@ -394,6 +407,7 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
               <ExperienceNode
                 key={n.id}
                 node={n}
+                label={titleOf(n)}
                 at={b}
                 nodeRef={track}
                 linked={links.some((l) => l.experienceId === n.id)}
@@ -481,6 +495,8 @@ function StageLabel({ index, name, open, top, onSave }: { index: number; name: s
 
 type NodeBase = {
   node: SkillNode;
+  /** The title alone, shown at a steady screen size when zoomed out. */
+  label: string;
   at: Box;
   nodeRef: (el: HTMLDivElement | null) => void;
   dragging: boolean;
@@ -499,7 +515,14 @@ type StepNodeProps = NodeBase & {
  * A step: a black card with the day it was completed, what was learned and a line on it, typed in
  * place. It widens with its text up to a limit, then wraps and grows taller.
  */
-function StepNode({ node, at, nodeRef, linked, autoFocus, dropping, dragging, onPointerDown, onSave, onDelete }: StepNodeProps) {
+/** A card's title by itself, centred on the card; it keeps its screen size while the box fades away around it. */
+const TitleOnly = ({ text }: { text: string }) => (
+  <span className="node__label" aria-hidden="true">
+    {text}
+  </span>
+);
+
+function StepNode({ node, label, at, nodeRef, linked, autoFocus, dropping, dragging, onPointerDown, onSave, onDelete }: StepNodeProps) {
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description);
   useEffect(() => setTitle(node.title), [node.title]);
@@ -562,6 +585,7 @@ function StepNode({ node, at, nodeRef, linked, autoFocus, dropping, dragging, on
         />
       </span>
       <span className="node__count num">{linked === 0 ? 'No experiences yet' : `${linked} ${linked === 1 ? 'experience' : 'experiences'}`}</span>
+      <TitleOnly text={label} />
       <button className="node__x" type="button" aria-label={`Delete step ${node.title || 'untitled'}`} onClick={onDelete}>
         ×
       </button>
@@ -570,7 +594,7 @@ function StepNode({ node, at, nodeRef, linked, autoFocus, dropping, dragging, on
 }
 
 /** An experience: the focus session behind a step, and the files from it. Drag it onto a step to link them. */
-function ExperienceNode({ node, at, nodeRef, linked, dragging, onPointerDown, onDelete }: NodeBase & { linked: boolean }) {
+function ExperienceNode({ node, label, at, nodeRef, linked, dragging, onPointerDown, onDelete }: NodeBase & { linked: boolean }) {
   const s = node.session;
   const files = s?.files ?? [];
   const shown = files.length > FILES_SHOWN ? files.slice(0, FILES_SHOWN - 1) : files;
@@ -599,6 +623,7 @@ function ExperienceNode({ node, at, nodeRef, linked, dragging, onPointerDown, on
           {more > 0 && <span className="file file--more num">+{more}</span>}
         </span>
       )}
+      <TitleOnly text={label} />
       <button className="node__x" type="button" aria-label={`Remove experience ${s?.name ?? ''}`.trim()} onClick={onDelete}>
         ×
       </button>

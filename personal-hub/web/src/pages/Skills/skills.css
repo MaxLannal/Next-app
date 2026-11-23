@@ -52,7 +52,7 @@
 .stage__name:not(:placeholder-shown) { color: color-mix(in oklab, var(--color-ink) 72%, transparent); }
 
 .canvas__links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-.link { fill: none; stroke: var(--color-accent); stroke-width: 2; stroke-linecap: round; opacity: 0.85; filter: drop-shadow(0 0 4px color-mix(in oklab, var(--color-accent) 50%, transparent)); }
+.link { fill: none; stroke: var(--color-accent); stroke-width: 2; stroke-linecap: round; opacity: 0.85; filter: drop-shadow(0 0 calc(4px / var(--k, 1)) color-mix(in oklab, var(--color-accent) 50%, transparent)); }
 .link.is-fresh { stroke-dasharray: 1; stroke-dashoffset: 1; animation: link-draw 700ms var(--ease-out) forwards; }
 @keyframes link-draw { to { stroke-dashoffset: 0; } }
 
@@ -65,17 +65,31 @@
   gap: 4px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: oklch(6% 0.008 268);
-  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-light) 10%, transparent), inset 0 0 0 1px color-mix(in oklab, var(--color-light) 9%, transparent), 0 18px 36px -18px oklch(0% 0 0 / 0.9);
+  isolation: isolate;
+  --node-bg: oklch(6% 0.008 268);
+  --node-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-light) 10%, transparent), inset 0 0 0 1px color-mix(in oklab, var(--color-light) 9%, transparent), 0 18px 36px -18px oklch(0% 0 0 / 0.9);
   color: var(--color-ink);
   cursor: grab;
   user-select: none;
   animation: node-in 360ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
-  transition: box-shadow var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out);
+  transition: transform var(--dur-short) var(--ease-out);
+}
+/* The card's box lives on its own layer, so zooming out can shrink and fade it away from its title. */
+.node::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  opacity: var(--detail, 1);
+  transform: scale(calc(0.55 + 0.45 * var(--detail, 1)));
+  transition: box-shadow var(--dur-short) var(--ease-out);
 }
 @keyframes node-in { from { opacity: 0; transform: scale(0.86); } }
-.node.is-dragging { cursor: grabbing; transform: scale(1.03); box-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-light) 14%, transparent), inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 40%, transparent), 0 30px 50px -20px oklch(0% 0 0 / 0.95); z-index: 2; }
-.node.is-drop { box-shadow: inset 0 0 0 2px var(--color-accent), 0 0 0 6px color-mix(in oklab, var(--color-accent) 20%, transparent), 0 18px 36px -18px oklch(0% 0 0 / 0.9); }
+.node.is-dragging { cursor: grabbing; transform: scale(1.03); --node-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-light) 14%, transparent), inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 40%, transparent), 0 30px 50px -20px oklch(0% 0 0 / 0.95); z-index: 2; }
+.node.is-drop { --node-shadow: inset 0 0 0 2px var(--color-accent), 0 0 0 6px color-mix(in oklab, var(--color-accent) 20%, transparent), 0 18px 36px -18px oklch(0% 0 0 / 0.9); }
 .node__kind { color: var(--color-muted); font: 500 11px/1 var(--font-body); letter-spacing: 0.06em; }
 .node--step .node__kind { color: color-mix(in oklab, var(--color-accent) 75%, var(--color-ink)); }
 /* A step widens with its text (between the min and max widths set on it), then wraps and grows down. */
@@ -94,10 +108,10 @@
 .grow--desc { color: var(--color-ink-2); font: 400 13px/1.45 var(--font-body); }
 .node__title::placeholder, .node__desc::placeholder { color: color-mix(in oklab, var(--color-ink) 35%, transparent); }
 .node__title:focus-visible, .node__desc:focus-visible { outline: none; }
-.node--step:focus-within { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 50%, transparent), 0 18px 36px -18px oklch(0% 0 0 / 0.9); }
+.node--step:focus-within { --node-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 50%, transparent), 0 18px 36px -18px oklch(0% 0 0 / 0.9); }
 .node__count { margin-top: 4px; color: var(--color-muted); font: 400 11.5px/1 var(--font-body); }
-.node--exp { padding: 10px 12px; border-radius: 12px; background: oklch(12% 0.016 268); }
-.node--exp.is-linked { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 14px 28px -16px oklch(0% 0 0 / 0.9); }
+.node--exp { padding: 10px 12px; border-radius: 12px; --node-bg: oklch(12% 0.016 268); }
+.node--exp.is-linked { --node-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 14px 28px -16px oklch(0% 0 0 / 0.9); }
 .node__name { overflow: hidden; font: 500 14px/1.25 var(--font-body); text-overflow: ellipsis; white-space: nowrap; }
 .node__meta { overflow: hidden; color: var(--color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 /* An experience's files, each a small cartoon of its kind with its name beneath. */
@@ -171,3 +185,30 @@
   .link.is-fresh { stroke-dashoffset: 0; }
   .addmenu__blob, .addmenu.is-open .addmenu__blob--step, .addmenu.is-open .addmenu__blob--exp, .addmenu__opt, .addmenu.is-open .addmenu__opt, .addmenu__plus { transition: none; }
 }
+
+/* ── Zoomed out: titles alone ──
+   Below a zoom, everything on a card but its title fades with --detail (1 → 0), the box shrinks
+   and fades behind, and the title is drawn at a steady screen size (font size divided by the zoom). */
+/* The card's text leaves over the first part of the zoom, the title arrives over the last, so they barely overlap. */
+.canvas__world.is-zoomed-out .node > :not(.node__label) { opacity: clamp(0, (var(--detail) - 0.45) / 0.55, 1); }
+.canvas__world.is-titles .node > :not(.node__label) { pointer-events: none; }
+.node__label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max-content;
+  /* Wraps within its own card's width (and a comfortable line), so crowded neighbours don't run together. */
+  max-width: min(calc(220px / var(--k, 1)), 100%);
+  transform: translate(-50%, -50%);
+  color: var(--color-ink);
+  font: 500 calc(15px / var(--k, 1)) / 1.3 var(--font-display);
+  letter-spacing: -0.005em;
+  text-align: center;
+  text-shadow: 0 0 calc(10px / var(--k, 1)) var(--canvas-bg), 0 0 calc(4px / var(--k, 1)) var(--canvas-bg);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+.canvas__world.is-zoomed-out .node__label { visibility: visible; opacity: clamp(0, (0.7 - var(--detail)) / 0.5, 1); }
+.node--exp .node__label { color: var(--color-ink-2); font-weight: 400; }

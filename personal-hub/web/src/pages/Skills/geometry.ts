@@ -144,3 +144,37 @@ export function freeSpot(taken: Box[], want: Box): { x: number; y: number } {
   }
   return { x: want.x, y: want.y };
 }
+
+/** Zoomed in at least this far, cards show everything. */
+export const DETAIL_FULL_K = 0.75;
+/** Zoomed out this far or more, only the titles are left, with no boxes. */
+export const DETAIL_NONE_K = 0.5;
+
+/**
+ * How much of each card to show at zoom `k`: 1 is the whole card, 0 is its title alone. Eased
+ * between the two zooms, so zooming crosses from one to the other smoothly.
+ */
+export function detailAt(k: number): number {
+  const t = clamp((k - DETAIL_NONE_K) / (DETAIL_FULL_K - DETAIL_NONE_K), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+/** Screen size of a title when only titles are shown. */
+export const TITLE_PX = 15;
+const TITLE_LINE = 1.3;
+/** Screen width a title wraps at. */
+export const TITLE_MAX_PX = 220;
+
+/**
+ * Where a link should end on a card at zoom `k` and `detail`: the card's own box when it is shown
+ * whole, closing in on the title at its centre as the box fades (the title keeps its screen size).
+ */
+export function anchorBox(b: Box, title: string, k: number, detail: number): Box {
+  if (detail >= 1) return b;
+  const perLine = Math.max(6, Math.floor(Math.min(TITLE_MAX_PX, b.w * k) / (TITLE_PX * 0.52)));
+  const lines = Math.max(1, Math.ceil(title.length / perLine));
+  const h = (lines * TITLE_PX * TITLE_LINE + 8) / k;
+  const label = { x: b.x, y: b.y + b.h / 2 - h / 2, w: b.w, h };
+  const u = 1 - detail;
+  return { x: b.x, w: b.w, y: b.y + (label.y - b.y) * u, h: b.h + (label.h - b.h) * u };
+}

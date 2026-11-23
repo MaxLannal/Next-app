@@ -103,3 +103,25 @@ describe('placing a new card', () => {
     expect(Math.abs(moved.x)).toBeGreaterThanOrEqual(248);
   });
 });
+
+describe('titles when zoomed out', () => {
+  it('shows whole cards zoomed in, titles alone zoomed out, and eases between', async () => {
+    const { detailAt, DETAIL_FULL_K, DETAIL_NONE_K } = await import('./geometry.ts');
+    expect(detailAt(1)).toBe(1);
+    expect(detailAt(DETAIL_FULL_K)).toBe(1);
+    expect(detailAt(DETAIL_NONE_K)).toBe(0);
+    expect(detailAt(0.3)).toBe(0);
+    const mid = detailAt((DETAIL_FULL_K + DETAIL_NONE_K) / 2);
+    expect(mid).toBeCloseTo(0.5);
+    expect(detailAt(0.7)).toBeGreaterThan(detailAt(0.6));
+  });
+
+  it('ends links on the card when whole, and on the centred title as the box fades', async () => {
+    const { anchorBox } = await import('./geometry.ts');
+    const b = { x: 0, y: 0, w: 240, h: 200 };
+    expect(anchorBox(b, 'Next.app setup', 0.8, 1)).toEqual(b);
+    const titleOnly = anchorBox(b, 'Next.app setup', 0.4, 0);
+    expect(titleOnly.y + titleOnly.h / 2).toBeCloseTo(100);
+    expect(titleOnly.h).toBeLessThan(b.h);
+  });
+});
