@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router';
 import { LoginGate } from './components/LoginGate.tsx';
 import { Nav } from './components/Nav.tsx';
+import { NavTimer } from './components/NavTimer.tsx';
 import { Dashboard } from './pages/Dashboard/Dashboard.tsx';
 import { DatabasePage } from './pages/Database/DatabasePage.tsx';
 import { EssaysPage } from './pages/Essays/EssaysPage.tsx';
@@ -18,7 +19,7 @@ export function App() {
       <a className="skip" href="#main">
         Skip to content
       </a>
-      <Nav />
+      <Nav timerSlot={<NavTimer />} />
       <main id="main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
