@@ -84,6 +84,9 @@ describe('SleepPanel', () => {
   });
 
   it('draws fourteen nights in the strip and picks one on click', async () => {
+    // The strip ends on today: pin "today" to the fixtures' day, or the run fails after midnight.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 22, 20, 0, 0));
     const user = userEvent.setup();
     const short = night({ night: '2026-11-20', asleepSeconds: 5 * 3600, score: 70 });
     const today = night({});
