@@ -44,7 +44,7 @@ const BUBBLE = 'M3.5 4.5h11v7h-6l-3 2.5v-2.5h-2z';
 const CROSS = 'M5 5l8 8M13 5l-8 8';
 
 /**
- * Claude over every page, reading the user's hub. Closed, it is one small "Chat" pill at the bottom
+ * Claude over every page, reading the hub. Closed, it is one small "Chat" pill at the bottom
  * right; the page always keeps the whole window. Open, the chat floats over the page above the
  * pill, in Dusk's glass, resizable from its left edge; under 900 px it is a sheet. Open or closed
  * is remembered. Mounted once, in the app shell, so a conversation carries on from page to page.

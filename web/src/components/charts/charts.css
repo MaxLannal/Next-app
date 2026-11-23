@@ -1,6 +1,6 @@
 /* Dusk charts: hand-written SVG to Hallmark's data-viz rules (hairline grids in
    --color-rule, text in ink or muted never in a series colour, tabular figures).
-   The pies and the sage heatmap are the user's requested exceptions (spec §3). */
+   The pies and the sage heatmap are deliberate exceptions to the theme. */
 
 .chart-axis { fill: var(--color-muted); font-size: 0.6875rem; font-variant-numeric: tabular-nums; }
 

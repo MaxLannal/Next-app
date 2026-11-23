@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One end-to-end hub: a fresh, empty data folder, its own port, and no Mac integrations
-# (no Calendar, media keys or caffeinate), so a test run never touches the user's data or prompts.
+# (no Calendar, media keys or caffeinate), so a test run never touches your data or prompts.
 set -euo pipefail
 port="$1"
 dir="$(mktemp -d "${TMPDIR:-/tmp}/hub-e2e.XXXXXX")"

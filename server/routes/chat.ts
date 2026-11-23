@@ -62,7 +62,7 @@ export function chatRoutes(ctx: AppContext): Hono {
     if (typeof body.replaceFrom === 'number' && Number.isSafeInteger(body.replaceFrom)) rewindFrom(ctx, id, body.replaceFrom);
 
     return streamSSE(c, async (stream) => {
-      // the user closing the tab, or pressing Stop, ends the request: the answer stops with it.
+      // The user closing the tab, or pressing Stop, ends the request: the answer stops with it.
       const controller = new AbortController();
       const abort = () => controller.abort();
       stream.onAbort(abort);

@@ -24,7 +24,7 @@ const RING = 0.12;
 const n = (v: number) => String(Number(v.toFixed(2)));
 
 /**
- * Subjects as a ring (the user asked for pies; spec §3), styled the Dusk way: a
+ * Subjects as a ring (pies by request), styled the Dusk way: a
  * periwinkle lightness ramp with 2 px gaps, the tail merged into a muted
  * "Other", and an empty ring when there is nothing yet.
  */
