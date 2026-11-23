@@ -99,3 +99,21 @@ export type SearchHit = {
 
 /** One timer change. A session is stored as these events, so queued ones can be replayed later. */
 export type SessionEvent = { type: 'start' | 'pause' | 'resume' | 'stop'; at: string };
+// --- Task 12 ---
+
+export type SleepStage = 'in_bed' | 'asleep' | 'awake' | 'core' | 'deep' | 'rem';
+
+/** One run of one stage. `asleep` is HealthKit's AsleepUnspecified; the Watch usually splits it into core/deep/rem. */
+export type SleepSample = { start: string; end: string; stage: SleepStage; source: string };
+
+/** One night, `night` being the local day it ended on. Seconds are whole and never overlap. */
+export type SleepNight = {
+  night: string;
+  bedtime: string;
+  wake: string;
+  inBedSeconds: number;
+  asleepSeconds: number;
+  stages: { awake: number; rem: number; core: number; deep: number; unspecified: number };
+  source: string;
+  score: number;
+};
