@@ -18,7 +18,13 @@ export class UnavailableError extends Error {
 export type ClaudeClient = {
   readImage(img: { data: Buffer; mediaType: 'image/jpeg' }): Promise<ImageReading>;
   streamTurn(
-    p: { system: string; messages: Anthropic.MessageParam[]; tools: Anthropic.Tool[]; signal?: AbortSignal },
+    p: {
+      /** Blocks let the caller mark the prompt for caching. */
+      system: string | Anthropic.TextBlockParam[];
+      messages: Anthropic.MessageParam[];
+      tools: Anthropic.Tool[];
+      signal?: AbortSignal;
+    },
     onText: (delta: string) => void,
   ): Promise<Anthropic.Message>;
 };

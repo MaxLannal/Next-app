@@ -14,9 +14,9 @@ import type { SortKey } from './types.ts';
 import './database.css';
 
 /**
- * The Database: filters on the left, sessions in the middle, and the chat sidebar's
- * place on the right. `/database` lists (with every filter in the address bar) and
- * `/database/session/:id` opens one session, with the chat still beside it.
+ * The Database: filters on the left, sessions beside them. `/database` lists (with every
+ * filter in the address bar) and `/database/session/:id` opens one session. The chat sidebar
+ * is the app shell's, beside every page.
  */
 export function DatabasePage() {
   return (
@@ -27,28 +27,21 @@ export function DatabasePage() {
       </header>
       <div className="db__grid db__grid--list">
         <DatabaseList />
-        <ChatSlot />
       </div>
     </div>
   );
 }
 
-/** One session, at `/database/session/:id`, with the chat's place kept beside it on wide screens. */
+/** One session, at `/database/session/:id`. */
 export function SessionPage() {
   return (
     <div className="container page db">
       <h1 className="visually-hidden">Session</h1>
       <div className="db__grid db__grid--detail">
         <SessionDetail />
-        <ChatSlot />
       </div>
     </div>
   );
-}
-
-/** Where Task 20 puts the chat sidebar. It is not built here. */
-function ChatSlot() {
-  return <aside className="db__chat-slot" aria-label="Chat" />;
 }
 
 /**

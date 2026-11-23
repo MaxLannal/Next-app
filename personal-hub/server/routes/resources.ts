@@ -38,6 +38,16 @@ async function jsonBody(c: Context): Promise<Record<string, unknown>> {
   return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
 }
 
+/** Every resource, newest first; only those of `kind` when given. */
+export function listResources(db: AppContext['db'], kind?: ResourceKind): Resource[] {
+  const rows = (
+    kind === undefined
+      ? db.prepare('SELECT * FROM resources ORDER BY id DESC').all()
+      : db.prepare('SELECT * FROM resources WHERE kind = ? ORDER BY id DESC').all(kind)
+  ) as Row[];
+  return rows.map(toResource);
+}
+
 /** Mounted at `/api/resources`. */
 export function resourceRoutes(ctx: AppContext): Hono {
   const routes = new Hono();
@@ -46,12 +56,7 @@ export function resourceRoutes(ctx: AppContext): Hono {
   routes.get('/', (c) => {
     const kind = c.req.query('kind') || undefined;
     if (kind !== undefined && !isKind(kind)) return c.json({ error: 'Kind must be pdf, video, course or link' }, 400);
-    const rows = (
-      kind === undefined
-        ? ctx.db.prepare('SELECT * FROM resources ORDER BY id DESC').all()
-        : ctx.db.prepare('SELECT * FROM resources WHERE kind = ? ORDER BY id DESC').all(kind)
-    ) as Row[];
-    return c.json(rows.map(toResource));
+    return c.json(listResources(ctx.db, kind));
   });
 
   // Waits for the title (8 s at most), so the reply is the finished row.

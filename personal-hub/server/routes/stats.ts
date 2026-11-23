@@ -15,6 +15,17 @@ function sortedSlices(bySubject: Map<number | null, { name: string; seconds: num
     .sort((a, b) => (a.subjectId === null ? 1 : 0) - (b.subjectId === null ? 1 : 0) || b.seconds - a.seconds);
 }
 
+/** Focus per subject over the local days `[fromDay, toDayExclusive)`, largest first. */
+export function focusBySubject(ctx: AppContext, fromDay: string, toDayExclusive: string): SubjectSlice[] {
+  const bySubject = new Map<number | null, { name: string; seconds: number }>();
+  for (const day of focusByDay(ctx.db, fromDay, toDayExclusive, ctx.timeZone(), ctx.now()).values()) {
+    for (const [subjectId, s] of day) {
+      bySubject.set(subjectId, { name: s.name, seconds: (bySubject.get(subjectId)?.seconds ?? 0) + s.seconds });
+    }
+  }
+  return sortedSlices(bySubject);
+}
+
 /** Mounted at `/api/stats`. */
 export function statsRoutes(ctx: AppContext): Hono {
   const routes = new Hono();
@@ -32,14 +43,7 @@ export function statsRoutes(ctx: AppContext): Hono {
     } catch {
       return c.json({ error: 'Date must be YYYY-MM-DD' }, 400);
     }
-    const after = addDays(bounds.days[bounds.days.length - 1], 1);
-    const bySubject = new Map<number | null, { name: string; seconds: number }>();
-    for (const day of focusByDay(ctx.db, bounds.days[0], after, tz, ctx.now()).values()) {
-      for (const [subjectId, s] of day) {
-        bySubject.set(subjectId, { name: s.name, seconds: (bySubject.get(subjectId)?.seconds ?? 0) + s.seconds });
-      }
-    }
-    return c.json(sortedSlices(bySubject));
+    return c.json(focusBySubject(ctx, bounds.days[0], addDays(bounds.days[bounds.days.length - 1], 1)));
   });
 
   routes.get('/heatmap', (c) => {

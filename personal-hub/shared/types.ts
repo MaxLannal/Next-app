@@ -277,3 +277,25 @@ export function isDayKey(v: unknown): v is string {
 
 /** How the latest iPhone Shortcut upload went: what it stored, or why it was refused. */
 export type SleepIngestStatus = { ok: boolean; at: string; inserted: number | null; error: string | null };
+
+// --- Task 20 ---
+
+/** One chat in the sidebar. `title` is the first 60 characters of its first message ('' until then). */
+export type ChatConversation = { id: number; title: string; createdAt: string; updatedAt: string };
+
+/** A stored turn: what the user asked, or the text Claude answered. */
+export type ChatMessage = { id: number; role: 'user' | 'assistant'; content: string; createdAt: string };
+
+/**
+ * One server-sent event of a chat answer; the SSE event name is `type`. `saved` comes first,
+ * with the stored question's id: the id a retry names in `replaceFrom`.
+ */
+export type ChatEvent =
+  | { type: 'saved'; messageId: number }
+  | { type: 'text'; delta: string }
+  | { type: 'tool'; name: string }
+  | { type: 'done'; messageId: number }
+  | { type: 'error'; message: string };
+
+/** `GET /api/chat/status`: whether the hub has a gateway to ask, and the model it asks. */
+export type ChatStatus = { configured: boolean; model: string };
