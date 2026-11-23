@@ -246,6 +246,24 @@ export function updateAttachment(
   return getAttachment(ctx, id);
 }
 
+/**
+ * Changes the text and rewrites the stored file from it (`render`) before the row
+ * and the index, so the file and the indexed text never describe different things:
+ * if the write fails, nothing changed.
+ */
+export function replaceAttachmentText(
+  ctx: AppContext,
+  id: number,
+  render: (text: string) => Buffer,
+  makeText: (previous: string) => string = (previous) => previous,
+): Attachment | null {
+  const found = attachmentFiles(ctx, id);
+  if (!found) return null;
+  const text = makeText(found.attachment.extractedText);
+  writeFileSync(found.file, render(text));
+  return updateAttachment(ctx, id, { extractedText: text });
+}
+
 /** Deletes the attachment and its derived files: rows, index entries, originals and previews. */
 export function deleteAttachment(ctx: AppContext, id: number): boolean {
   const rows = ctx.db

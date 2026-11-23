@@ -1,0 +1,18 @@
+/* Dusk: a LaTeX reading and its pills, placed beside the photo it came from.
+   Not glass itself (Task 7 puts it on a sheet), so no lit edge and no blur;
+   only the source block carries a hairline, like the ruled panels. */
+
+.latex { display: grid; gap: var(--space-sm); margin: 0; }
+.latex__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+.latex__pills { display: flex; gap: var(--space-sm); }
+.latex__head .btn-sm { min-height: 32px; padding: 0 var(--space-md); font-size: var(--text-sm); }
+
+.latex__body { overflow-x: auto; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-inner); background: color-mix(in oklab, var(--color-light) 4%, transparent); color: var(--color-ink); }
+.latex__body .katex { font-size: 1.15em; }
+.latex__body .katex-display { margin: 0; }
+
+.latex__source { margin: 0; overflow-x: auto; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-inner); background: color-mix(in oklab, var(--color-shade) 40%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 8%, transparent); color: var(--color-ink-2); font: 400 0.875rem/1.6 ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (prefers-reduced-motion: reduce) {
+  .latex__head .btn-sm { transition: none; }
+}
