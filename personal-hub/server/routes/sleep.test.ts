@@ -252,7 +252,7 @@ describe('POST /api/ingest/health-export', () => {
 
 describe('GET /api/sleep', () => {
   it('reports no data calmly', async () => {
-    expect(await getSleep()).toEqual({ nights: [], lastNight: null, lastSyncAt: null });
+    expect(await getSleep()).toEqual({ nights: [], lastNight: null, lastSyncAt: null, lastIngest: null });
   });
 
   it('returns the last 14 nights by default and honours ?nights', async () => {
@@ -272,5 +272,80 @@ describe('GET /api/sleep', () => {
   it('asks the hub for the strip and last night only, not a year', async () => {
     expect((await t.req('GET', '/api/sleep?nights=zero')).status).toBe(400);
     expect((await t.req('GET', '/api/sleep?nights=400')).status).toBe(400);
+  });
+});
+
+describe('uploads from a Chinese-language iPhone, and what the hub remembers', () => {
+  const chinese = [
+    '2026年11月22日 上午12:10;2026年11月22日 上午4:10;核心睡眠;我的Apple Watch',
+    '2026年11月22日 上午4:10;2026年11月22日 上午5:40;深度睡眠;我的Apple Watch',
+  ].join('\n');
+
+  it('stores them', async () => {
+    const res = await postSleep(chinese, { headers: { 'content-type': 'text/plain' } });
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(((await res.json()) as IngestReply).inserted).toBe(2);
+  });
+
+  it('remembers a refused upload and shows it in the read, then the next good one', async () => {
+    const bad = await postSleep('2026-11-22T05:40:00-06:00;2026-11-22T07:10:00-06:00;午睡;iPhone', {
+      headers: { 'content-type': 'text/plain' },
+    });
+    expect(bad.status).toBe(400);
+    let read = (await (await t.req('GET', '/api/sleep')).json()) as SleepReply & { lastIngest: unknown };
+    expect(read.lastIngest).toMatchObject({ ok: false, at: '2026-11-22T18:00:00.000Z' });
+    expect((read.lastIngest as { error: string }).error).toMatch(/unknown sleep value "午睡"/);
+
+    t.setNow('2026-11-22T18:05:00.000Z');
+    await postSleep(chinese, { headers: { 'content-type': 'text/plain' } });
+    read = (await (await t.req('GET', '/api/sleep')).json()) as SleepReply & { lastIngest: unknown };
+    expect(read.lastIngest).toEqual({ ok: true, at: '2026-11-22T18:05:00.000Z', inserted: 2, error: null });
+  });
+
+  it('starts with no upload remembered', async () => {
+    const read = (await (await t.req('GET', '/api/sleep')).json()) as { lastIngest: unknown };
+    expect(read.lastIngest).toBeNull();
+  });
+
+  it('imports the 导出.xml a Chinese-language iPhone puts in its Health export zip', async () => {
+    const fixture = readFileSync(fileURLToPath(new URL('../test/fixtures/export-sample.xml', import.meta.url)));
+    const zip = await zipOf({
+      'apple_health_export/导出_cda.xml': Buffer.from('<ClinicalDocument/>'),
+      'apple_health_export/导出.xml': Buffer.from(fixture),
+    });
+    const body = new FormData();
+    body.append('file', new File([new Uint8Array(zip)], '导出.zip'));
+    const res = await t.req('POST', '/api/ingest/health-export', body);
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(((await res.json()) as { inserted: number }).inserted).toBe(2);
+  });
+});
+
+describe('the payload the iPhone Shortcut actually sends', () => {
+  // The exact shape the Shortcut writes: a JSON array whose items are joined by "\n\n,", the stage
+  // under `value`, ISO dates with an offset, and an empty `source`. Times here are made up.
+  const item = (start: string, end: string, value: string) =>
+    `{"start":"${start}","end":"${end}","value":"${value}","source":""}`;
+  const shortcutBody =
+    '[' +
+    [
+      item('2026-11-20T00:40:00-06:00', '2026-11-20T02:40:00-06:00', 'Core'),
+      item('2026-11-20T02:40:00-06:00', '2026-11-20T03:10:00-06:00', 'Deep'),
+      item('2026-11-20T03:10:00-06:00', '2026-11-20T03:40:00-06:00', 'REM'),
+      item('2026-11-20T03:40:00-06:00', '2026-11-20T03:45:00-06:00', 'Awake'),
+      item('2026-11-20T03:45:00-06:00', '2026-11-20T06:45:00-06:00', 'Core'),
+    ].join('\n\n,') +
+    '\n\n]';
+
+  it('stores it, once, and the night shows in the read', async () => {
+    for (const contentType of ['application/json', 'text/plain']) {
+      const res = await postSleep(shortcutBody, { headers: { 'content-type': contentType } });
+      expect(res.status, await res.clone().text()).toBe(200);
+    }
+    const [night] = (await getSleep()).nights;
+    expect(night.night).toBe('2026-11-20');
+    expect(night.stages).toMatchObject({ core: 5 * 3600, deep: 30 * 60, rem: 30 * 60, awake: 5 * 60 });
+    expect(night.asleepSeconds).toBe(6 * 3600);
+    expect(night.source).toBe('Apple Health');
   });
 });

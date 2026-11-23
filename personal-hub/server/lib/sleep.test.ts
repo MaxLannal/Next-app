@@ -211,3 +211,31 @@ describe('parseShortcutPayload', () => {
     expect(() => parseShortcutPayload('2026-11-22T00:40:00-06:00;2026-11-21T23:14:05-06:00;Core;Watch', 'text/plain')).toThrow(/end/i);
   });
 });
+
+describe('a Chinese-language iPhone', () => {
+  it('reads Health’s stage names in Chinese', async () => {
+    const { stageFrom } = await import('./sleep.ts');
+    expect(stageFrom('核心睡眠')).toBe('core');
+    expect(stageFrom('深度睡眠')).toBe('deep');
+    expect(stageFrom('快速动眼睡眠')).toBe('rem');
+    expect(stageFrom('快速動眼')).toBe('rem');
+    expect(stageFrom('清醒')).toBe('awake');
+    expect(stageFrom('卧床')).toBe('in_bed');
+    expect(stageFrom('在床上')).toBe('in_bed');
+    expect(stageFrom('睡眠')).toBe('asleep');
+    expect(stageFrom('未指定')).toBe('asleep');
+    expect(stageFrom('跑步')).toBeNull();
+  });
+
+  it('parses a whole Shortcut line in Chinese, in the hub zone', () => {
+    const body = [
+      '2026年11月22日 上午12:10;2026年11月22日 上午4:10;核心睡眠;我的Apple Watch',
+      '2026年11月22日 上午4:10;2026年11月22日 上午5:40;快速动眼睡眠;我的Apple Watch',
+    ].join('\n');
+    const samples = parseShortcutPayload(body, 'text/plain', 'America/Chicago');
+    expect(samples).toEqual([
+      { start: '2026-11-22T06:10:00.000Z', end: '2026-11-22T10:10:00.000Z', stage: 'core', source: '我的Apple Watch' },
+      { start: '2026-11-22T10:10:00.000Z', end: '2026-11-22T11:40:00.000Z', stage: 'rem', source: '我的Apple Watch' },
+    ]);
+  });
+});

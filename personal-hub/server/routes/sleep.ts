@@ -8,7 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import yauzl from 'yauzl';
-import type { SleepNight, SleepSample } from '../../shared/types.ts';
+import type { SleepIngestStatus, SleepNight, SleepSample } from '../../shared/types.ts';
 import type { AppContext } from '../context.ts';
 import { parseHealthExport } from '../lib/health-export.ts';
 import { groupNights, parseShortcutPayload } from '../lib/sleep.ts';
@@ -35,6 +35,26 @@ export function storeSamples(ctx: AppContext, samples: SleepSample[]): number {
     throw err;
   }
   return inserted;
+}
+
+const LAST_INGEST_KEY = 'sleep_last_ingest';
+
+/** Remembers how the latest iPhone upload went, so a refused one shows in the app, not just on the phone. */
+function rememberIngest(ctx: AppContext, status: SleepIngestStatus): void {
+  ctx.db
+    .prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(LAST_INGEST_KEY, JSON.stringify(status));
+}
+
+/** The latest iPhone upload's outcome, or null before the first one. */
+export function lastIngest(db: AppContext['db']): SleepIngestStatus | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(LAST_INGEST_KEY) as { value: string } | undefined;
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as SleepIngestStatus;
+  } catch {
+    return null;
+  }
 }
 
 /** Every stored sample, oldest first. */
@@ -65,7 +85,14 @@ export function nightsFrom(ctx: AppContext): SleepNight[] {
   return nights;
 }
 
-/** The first `apple_health_export/export.xml` inside a zip, streamed out by `yauzl`. */
+/**
+ * The export's main XML: directly inside `apple_health_export/`, and not the clinical-document
+ * file. Health names it after the phone's language (`export.xml`, `导出.xml`, `書き出す.xml`…), with
+ * the clinical documents in `<same>_cda.xml`.
+ */
+export const isMainExportXml = (name: string) => /(^|\/)apple_health_export\/[^/]+\.xml$/i.test(name) && !/_cda\.xml$/i.test(name);
+
+/** The export's main XML inside the zip Health makes, streamed out by `yauzl`. */
 function openExportFromZip(path: string): Promise<Readable> {
   return new Promise((resolve, reject) => {
     yauzl.open(path, { lazyEntries: true }, (err, zip) => {
@@ -75,11 +102,11 @@ function openExportFromZip(path: string): Promise<Readable> {
       }
       const done = (error: Error | null, stream: Readable | null) => {
         zip.close();
-        if (error || !stream) reject(error ?? new Error('No apple_health_export/export.xml in this zip'));
+        if (error || !stream) reject(error ?? new Error('No Health export XML in this zip'));
         else resolve(stream);
       };
       zip.on('entry', (entry: yauzl.Entry) => {
-        if (/\/export\.xml$/i.test(entry.fileName) && /(^|\/)apple_health_export\//i.test(entry.fileName)) {
+        if (isMainExportXml(entry.fileName)) {
           zip.openReadStream(entry, (openErr, stream) => done(openErr ? new Error('Could not read export.xml') : null, stream ?? null));
           return;
         }
@@ -145,14 +172,22 @@ export function sleepIngestRoutes(ctx: AppContext): Hono {
   // window inserts nothing new.
   routes.post('/sleep', async (c) => {
     const body = await c.req.text();
+    const at = ctx.now().toISOString();
+    const refuse = (error: string) => {
+      // The Shortcut doesn't show an error reply, so the log and the app have to.
+      console.error(`Sleep upload refused: ${error}`);
+      rememberIngest(ctx, { ok: false, at, inserted: null, error });
+      return c.json({ error }, 400);
+    };
     let samples: SleepSample[];
     try {
-      samples = parseShortcutPayload(body, c.req.header('content-type') ?? '');
+      samples = parseShortcutPayload(body, c.req.header('content-type') ?? '', ctx.timeZone());
     } catch (err) {
-      return c.json({ error: `Could not read the sleep data: ${messageOf(err)}` }, 400);
+      return refuse(`Could not read the sleep data: ${messageOf(err)}`);
     }
-    if (samples.length === 0) return c.json({ error: 'No sleep samples in the body' }, 400);
+    if (samples.length === 0) return refuse('No sleep samples in the body');
     const inserted = storeSamples(ctx, samples);
+    rememberIngest(ctx, { ok: true, at, inserted, error: null });
     return c.json({ inserted, nights: nightsFrom(ctx).length });
   });
 
@@ -212,7 +247,7 @@ export function sleepRoutes(ctx: AppContext): Hono {
     const all = nightsFrom(ctx);
     const nights = all.slice(-count);
     const lastNight: SleepNight | null = all.at(-1) ?? null;
-    return c.json({ nights, lastNight, lastSyncAt: newestSample(ctx.db) });
+    return c.json({ nights, lastNight, lastSyncAt: newestSample(ctx.db), lastIngest: lastIngest(ctx.db) });
   });
 
   return routes;

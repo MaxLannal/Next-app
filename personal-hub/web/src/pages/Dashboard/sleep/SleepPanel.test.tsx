@@ -103,3 +103,32 @@ describe('SleepPanel', () => {
     expect(container.querySelector('[data-night="2026-11-20"]')).not.toBeNull();
   });
 });
+
+describe('SleepPanel and the last iPhone upload', () => {
+  const refused = {
+    ok: false,
+    at: '2026-11-22T13:20:00.000Z',
+    inserted: null,
+    error: 'Could not read the sleep data: sample 1: unknown sleep value "undefined"',
+  };
+
+  it('says when the last upload was refused, and why', async () => {
+    stubSleep({ nights: [], lastNight: null, lastSyncAt: null, lastIngest: refused });
+    renderPanel();
+    const notice = await screen.findByRole('status', { name: /last iphone upload/i });
+    expect(notice.textContent).toMatch(/was refused/);
+    expect(notice.textContent).toMatch(/unknown sleep value/);
+  });
+
+  it('says nothing about an upload that went through', async () => {
+    stubSleep({
+      nights: [night({})],
+      lastNight: night({}),
+      lastSyncAt: '2026-11-22T13:12:00.000Z',
+      lastIngest: { ok: true, at: '2026-11-22T13:20:00.000Z', inserted: 12, error: null },
+    });
+    renderPanel();
+    await screen.findByText('7 h 30 m');
+    expect(screen.queryByRole('status', { name: /last iphone upload/i })).toBeNull();
+  });
+});

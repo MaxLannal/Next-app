@@ -22,13 +22,21 @@ export function SleepSetup({ settings }: { settings: SettingsView }) {
         <li>In the Shortcuts app, open Automation and add a Personal Automation, Daily at the time you wake.</li>
         <li>Add Find Health Samples, with Sleep Analysis samples whose Start Date is in the last 7 days.</li>
         <li>
-          Add Repeat with Each, and inside it Text: <code>[Start Date ISO];[End Date ISO];[Value];[Source]</code>
+          Add Repeat with Each. Inside it, Format Date twice (Start Date and End Date, Date Format: ISO 8601), then Text:{' '}
+          <code>{'{"start":"[start]","end":"[end]","value":"[Value]","source":"[Source]"}'}</code>
         </li>
-        <li>After the repeat, add Combine Text with New Lines, so each sample is one line.</li>
+        <li>
+          After the repeat, add Combine Text with <code>,</code> and wrap it in <code>[ ]</code>, so the body is one JSON list.
+          Lines of <code>start;end;value;source</code> work too, and so do Health’s Chinese stage names and dates.
+        </li>
         <li>
           Add Get Contents of URL: method POST (Request Body: File), header <code>Authorization</code> ={' '}
           <code>Bearer {token === undefined ? '<token>' : token}</code>, and the combined text as the body, sent to the address
           below.
+        </li>
+        <li>
+          Add Show Result after it while you test: Shortcuts doesn’t treat a refused upload as an error, so this is where the
+          hub’s reply shows. The dashboard’s Sleep panel says so too.
         </li>
         <li>Turn off Ask Before Running, so it sends without a tap.</li>
       </ol>
@@ -79,7 +87,7 @@ function HistoryImport() {
   return (
     <div className="import">
       <p className="settings-note">
-        Past nights, once: in Health, tap your picture, Export All Health Data, and pick the export (the .zip or its export.xml)
+        Past nights, once: in Health, tap your picture, Export All Health Data, and pick the export (the .zip, or the .xml inside it)
         here.
       </p>
       <div className="import__row">

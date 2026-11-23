@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import type { SleepNight } from '@shared/types.ts';
+import type { SleepIngestStatus, SleepNight } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
 import { StackedBar } from '../../../components/charts/StackedBar.tsx';
 import { EmptyState } from '../../../components/ui/EmptyState.tsx';
@@ -9,7 +9,7 @@ import { formatDuration, formatShortDate, formatTime } from '../../../lib/format
 import { lastDays, NightStrip } from './NightStrip.tsx';
 import './sleep.css';
 
-type SleepReply = { nights: SleepNight[]; lastNight: SleepNight | null; lastSyncAt: string | null };
+type SleepReply = { nights: SleepNight[]; lastNight: SleepNight | null; lastSyncAt: string | null; lastIngest?: SleepIngestStatus | null };
 
 const QUERY_KEY = ['sleep'];
 const STRIP_DAYS = 14;
@@ -63,6 +63,7 @@ export function SleepPanel() {
 
   return (
     <Panel title="Sleep" className="sleep" actions={lastSynced(query.data?.lastSyncAt ?? null)}>
+      <RefusedUpload status={query.data?.lastIngest ?? null} />
       {query.isError && nights.length === 0 ? (
         <EmptyState
           title="Couldn’t load your sleep"
@@ -99,6 +100,19 @@ export function SleepPanel() {
         <span aria-busy="true" />
       )}
     </Panel>
+  );
+}
+
+/**
+ * The iPhone Shortcut never shows the hub's reply, so a refused upload would otherwise fail in
+ * silence. When the latest one was refused, say when and why, in apricot.
+ */
+function RefusedUpload({ status }: { status: SleepIngestStatus | null }) {
+  if (status === null || status.ok) return null;
+  return (
+    <p className="sleep__refused" role="status" aria-label="Last iPhone upload">
+      Last iPhone upload {formatShortDate(status.at)} {formatTime(status.at)} was refused: {status.error ?? 'no reason given'}
+    </p>
   );
 }
 

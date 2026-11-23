@@ -71,3 +71,15 @@
 @media (prefers-reduced-motion: reduce) {
   .nights__hit { transition: none; }
 }
+
+/* A refused iPhone upload: apricot means owed, and the reason sits right there. */
+.sleep__refused {
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) 12px;
+  border-radius: var(--radius-inner);
+  background: color-mix(in oklab, var(--color-accent-2) 10%, transparent);
+  color: var(--color-accent-2);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

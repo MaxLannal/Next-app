@@ -2,6 +2,7 @@
 // Pure functions. Instants are ISO-8601 strings; nights are local day keys in the hub time zone.
 
 import type { SleepNight, SleepSample, SleepStage } from '../../shared/types.ts';
+import { parseShortcutDate } from './local-dates.ts';
 import { dayKey } from './time.ts';
 
 const HOUR_MS = 3_600_000;
@@ -14,10 +15,30 @@ export const SLEEP_STAGES: readonly SleepStage[] = ['in_bed', 'asleep', 'awake',
 const isAsleep = (stage: SleepStage) => stage === 'core' || stage === 'deep' || stage === 'rem' || stage === 'asleep';
 
 /**
+ * Health's stage names on a Chinese-language iPhone (简体 and 繁體). The specific stages come
+ * first, because 深度睡眠 and 核心睡眠 also contain plain 睡眠.
+ */
+const CHINESE_STAGES: [RegExp, SleepStage][] = [
+  [/卧床|臥床|在床/, 'in_bed'],
+  [/清醒|醒着|醒著/, 'awake'],
+  [/快速动眼|快速動眼|眼动|眼動/, 'rem'],
+  [/深度|深睡/, 'deep'],
+  [/核心|浅睡|淺睡|轻度|輕度/, 'core'],
+  [/睡眠|睡着|睡著|入睡|未指定/, 'asleep'],
+];
+
+/** What a sample's source becomes when the Shortcut leaves it empty, as it does by default. */
+export const DEFAULT_SOURCE = 'Apple Health';
+
+const systemTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/**
  * A stage name as a Shortcut or a health export writes it: `Core`, `REM`, `In Bed`, `Awake`,
  * `Asleep (Core)`, `HKCategoryValueSleepAnalysisAsleepDeep` → a stage. Null when it isn't one.
  */
 export function stageFrom(value: string): SleepStage | null {
+  const chinese = CHINESE_STAGES.find(([pattern]) => pattern.test(value));
+  if (chinese) return chinese[1];
   // HealthKit's own values, matched whole: `HKCategoryValueSleepAnalysisAsleepREM` would otherwise
   // read as plain `Asleep`.
   const health = value.trim();
@@ -271,19 +292,19 @@ export function sleepScore(n: Pick<SleepNight, 'asleepSeconds' | 'inBedSeconds' 
  * The Shortcut's POST body: JSON `{samples: SleepSample[]}` (or a bare array), or text lines
  * `start;end;value;source`. Throws with the offending value when a line or sample is unusable.
  */
-export function parseShortcutPayload(body: string, contentType: string): SleepSample[] {
+export function parseShortcutPayload(body: string, contentType: string, tz: string = systemTimeZone()): SleepSample[] {
   // The Shortcut sends text as text; a JSON body may still arrive with any content type, so the
   // content settles it first.
   const trimmed = body.trimStart();
-  if (/json/i.test(contentType) || trimmed.startsWith('{') || trimmed.startsWith('[')) return parseJson(trimmed);
+  if (/json/i.test(contentType) || trimmed.startsWith('{') || trimmed.startsWith('[')) return parseJson(trimmed, tz);
   return body
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== '' && !/^start\s*;/i.test(line))
-    .map(parseLine);
+    .map((line, i) => parseLine(line, i, tz));
 }
 
-function parseJson(body: string): SleepSample[] {
+function parseJson(body: string, tz: string): SleepSample[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -292,29 +313,33 @@ function parseJson(body: string): SleepSample[] {
   }
   const list = Array.isArray(parsed) ? parsed : (parsed as { samples?: unknown } | null)?.samples;
   if (!Array.isArray(list)) throw new Error('Expected {samples: [...]}');
-  return list.map((raw, i) => toSample(raw as Record<string, unknown>, `sample ${i + 1}`));
+  return list.map((raw, i) => toSample(raw as Record<string, unknown>, `sample ${i + 1}`, tz));
 }
 
-function parseLine(line: string, i: number): SleepSample {
+function parseLine(line: string, i: number, tz: string): SleepSample {
   const parts = line.split(';').map((p) => p.trim());
   if (parts.length < 3) throw new Error(`Line ${i + 1}: expected start;end;value;source`);
   const [start, end, value, ...source] = parts;
   const stage = stageFrom(value);
   if (!stage) throw new Error(`Line ${i + 1}: unknown sleep value "${value}"`);
-  return toSample({ start, end, stage, source: source.join(';') }, `line ${i + 1}`);
+  return toSample({ start, end, stage, source: source.join(';') }, `line ${i + 1}`, tz);
 }
 
-/** Validates one sample's instants; the stage is already a SleepStage. */
-export function toSample(raw: Record<string, unknown>, where: string): SleepSample {
-  const { start, end, stage, source } = raw;
-  const startMs = typeof start === 'string' ? Date.parse(start) : Number.NaN;
-  const endMs = typeof end === 'string' ? Date.parse(end) : Number.NaN;
-  if (!Number.isFinite(startMs)) throw new Error(`${where}: "start" is not a time`);
-  if (!Number.isFinite(endMs)) throw new Error(`${where}: "end" is not a time`);
-  if (endMs <= startMs) throw new Error(`${where}: end is before start`);
+/**
+ * Validates one sample. The stage may come as `stage` or, as the iPhone Shortcut writes it, as
+ * `value`; an empty source becomes `DEFAULT_SOURCE`. Dates are read by `parseShortcutDate` in `tz`.
+ */
+export function toSample(raw: Record<string, unknown>, where: string, tz: string = systemTimeZone()): SleepSample {
+  const { start, end } = raw;
+  const stage = raw.stage ?? raw.value;
+  const startAt = typeof start === 'string' ? parseShortcutDate(start, tz) : null;
+  const endAt = typeof end === 'string' ? parseShortcutDate(end, tz) : null;
+  if (!startAt) throw new Error(`${where}: "start" is not a time (${JSON.stringify(start)})`);
+  if (!endAt) throw new Error(`${where}: "end" is not a time (${JSON.stringify(end)})`);
+  if (endAt.getTime() <= startAt.getTime()) throw new Error(`${where}: end is before start`);
   const mapped = typeof stage === 'string' ? stageFrom(stage) : null;
-  if (!mapped) throw new Error(`${where}: unknown stage "${String(stage)}"`);
-  if (typeof source !== 'string' || source === '') throw new Error(`${where}: source is missing`);
-  return { start: new Date(startMs).toISOString(), end: new Date(endMs).toISOString(), stage: mapped, source };
+  if (!mapped) throw new Error(`${where}: unknown sleep value "${String(stage)}"`);
+  const source = typeof raw.source === 'string' && raw.source.trim() !== '' ? raw.source.trim() : DEFAULT_SOURCE;
+  return { start: startAt.toISOString(), end: endAt.toISOString(), stage: mapped, source };
 }
 

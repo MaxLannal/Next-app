@@ -272,3 +272,8 @@ export function isDayKey(v: unknown): v is string {
   const d = new Date(`${v}T00:00:00.000Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }
+
+// --- Sleep upload status ---
+
+/** How the latest iPhone Shortcut upload went: what it stored, or why it was refused. */
+export type SleepIngestStatus = { ok: boolean; at: string; inserted: number | null; error: string | null };
