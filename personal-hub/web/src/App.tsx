@@ -5,6 +5,7 @@ import { Nav } from './components/Nav.tsx';
 import { Dashboard } from './pages/Dashboard/Dashboard.tsx';
 import { DatabasePage } from './pages/Database/DatabasePage.tsx';
 import { EssaysPage } from './pages/Essays/EssaysPage.tsx';
+import { EssayEditor } from './pages/Essays/editor/EssayEditor.tsx';
 import { SettingsPage } from './pages/Settings/SettingsPage.tsx';
 
 export function App() {
@@ -23,7 +24,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/essays" element={<EssaysPage />} />
-          <Route path="/essays/:id" element={<EssaysPage />} />
+          <Route path="/essays/:id" element={<EssayEditor />} />
           <Route path="/database" element={<DatabasePage />} />
           <Route path="/database/session/:id" element={<DatabasePage />} />
           <Route path="/settings" element={<SettingsPage />} />
