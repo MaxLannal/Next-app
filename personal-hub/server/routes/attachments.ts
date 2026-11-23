@@ -15,6 +15,7 @@ import {
   updateAttachment,
   type AttachmentFilter,
 } from '../repo/attachments.ts';
+import { processImage, rewriteLatexFile } from '../services/vision.ts';
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 const ID = '/:id{[0-9]+}';
@@ -121,7 +122,18 @@ export function attachmentRoutes(ctx: AppContext): Hono {
         return c.json({ error: 'No such session' }, 400);
       }
     }
-    return c.json(updateAttachment(ctx, id, { extractedText, sessionId }));
+    const updated = updateAttachment(ctx, id, { extractedText, sessionId });
+    if (extractedText !== undefined) rewriteLatexFile(ctx, id);
+    return c.json(updated);
+  });
+
+  // Read a photo again: the earlier reading is replaced once the new one lands.
+  routes.post(`${ID}/vision`, (c) => {
+    const attachment = getAttachment(ctx, Number(c.req.param('id')));
+    if (!attachment) return c.json({ error: 'Not found' }, 404);
+    if (attachment.kind !== 'image' || attachment.parentId !== null) return c.json({ error: 'Not a photo' }, 400);
+    ctx.jobs.enqueue('vision', () => processImage(ctx, attachment.id));
+    return c.body(null, 202);
   });
 
   routes.delete(ID, (c) => {
