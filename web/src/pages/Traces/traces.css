@@ -90,8 +90,9 @@
 .trace-pin.is-draft .trace-pin__dot { animation: trace-pulse 1.4s ease-out infinite; }
 @keyframes trace-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent-2) 60%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
 
-.traces__lightbox { position: fixed; inset: 0; z-index: var(--z-modal, 50); display: grid; place-items: center; padding: var(--space-xl); border: 0; background: oklch(5% 0.01 268 / 0.88); cursor: zoom-out; }
-.traces__lightbox img { max-width: 100%; max-height: 100%; border-radius: var(--radius-inner); box-shadow: 0 30px 80px -30px #000; }
+/* The photo, whole, as large as the window allows: one fixed-size cell, the photo scaled to fit it. */
+.traces__lightbox { position: fixed; inset: 0; z-index: var(--z-modal, 50); display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; padding: var(--space-xl); border: 0; background: oklch(5% 0.01 268 / 0.88); cursor: zoom-out; }
+.traces__lightbox img { width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-inner); box-shadow: 0 30px 80px -30px #000; }
 
 /* Phones: the sidebar becomes a sheet along the bottom, above the tab bar. */
 @media (max-width: 700px) {
