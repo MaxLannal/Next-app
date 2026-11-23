@@ -16,6 +16,11 @@ final class WebViewController: NSViewController {
             source: "window.print = function () { window.webkit.messageHandlers.print.postMessage(''); };",
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
         contentController.add(self, name: "print")
+        // Drag regions: elements styled `-webkit-app-region: drag` move the window when
+        // dragged, and zoom or minimise on double-click as System Settings says.
+        contentController.addUserScript(WKUserScript(
+            source: Self.dragRegionScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        contentController.add(self, name: "performDrag")
 
         let config = WKWebViewConfiguration()
         config.userContentController = contentController
@@ -134,9 +139,12 @@ extension WebViewController: WKNavigationDelegate, WKDownloadDelegate {
 // MARK: - Camera, file pickers, new windows and dialogs
 
 extension WebViewController: WKUIDelegate {
+    /// Camera only: the hub records no audio, and the app has no audio-input entitlement.
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                  initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
                  decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        // `.microphone` is what WKWebView reports for getUserMedia({ audio: true }).
+        if #available(macOS 12, *), type == .microphone { return decisionHandler(.deny) }
         decisionHandler(origin.host == "localhost" ? .grant : .deny)
     }
 
@@ -183,15 +191,55 @@ extension WebViewController: WKUIDelegate {
     }
 }
 
-// MARK: - Print
+// MARK: - Print and drag regions
 
 extension WebViewController: WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "print", let window = view.window else { return }
-        let operation = webView.printOperation(with: NSPrintInfo.shared)
-        operation.view?.frame = webView.bounds // without a frame WebKit prints blank pages
-        operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+        switch message.name {
+        case "performDrag":
+            if message.body as? Bool == true {
+                titleBarDoubleClick()
+            } else {
+                view.window?.performDrag(with: NSApp.currentEvent ?? NSEvent())
+            }
+        case "print" where view.window != nil:
+            let operation = webView.printOperation(with: NSPrintInfo.shared)
+            operation.view?.frame = webView.bounds // without a frame WebKit prints blank pages
+            operation.runModal(for: view.window!, delegate: nil, didRun: nil, contextInfo: nil)
+        default:
+            break
+        }
     }
+
+    /// The title bar's double-click action (the page's click count arrives with the message).
+    private func titleBarDoubleClick() {
+        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+        case "Minimize": view.window?.performMiniaturize(nil)
+        case "None": break
+        default: view.window?.performZoom(nil)
+        }
+    }
+
+    /// On mousedown inside a `-webkit-app-region: drag` element (and not inside a
+    /// `no-drag` one), posts to `performDrag` (true when it was a double-click);
+    /// clicks elsewhere are untouched.
+    static let dragRegionScript = """
+    (() => {
+      const ctl = window.webkit && window.webkit.messageHandlers;
+      if (!ctl || !ctl.performDrag) return;
+      const post = (doubleClick) => {
+        try { ctl.performDrag.postMessage(!!doubleClick); } catch (e) {}
+      };
+      window.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 && e.buttons !== 1) return;
+        for (let el = e.target; el && el !== document.documentElement; el = el.parentElement) {
+          const region = getComputedStyle(el).getPropertyValue('-webkit-app-region').trim();
+          if (region === 'drag') { post(e.detail >= 2); return; }
+          if (region === 'no-drag') return;
+        }
+      }, true);
+    })();
+    """
 }
 
 // MARK: - Start error page

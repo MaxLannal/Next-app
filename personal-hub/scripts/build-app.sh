@@ -12,7 +12,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 if [[ "${1:-}" == "--test" ]]; then
-  swiftc -parse-as-library -target "$TARGET" \
+  swiftc -parse-as-library -swift-version 5 -target "$TARGET" \
     "$SRC/ServerProcess.swift" "$SRC/Tests/ServerProcessTests.swift" -o "$WORK/server-process-tests"
   "$WORK/server-process-tests"
   exit
@@ -27,7 +27,7 @@ APP="$HUB_DIR/dist/Hub.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-swiftc -O -target "$TARGET" -framework AppKit -framework WebKit \
+swiftc -O -swift-version 5 -target "$TARGET" -framework AppKit -framework WebKit \
   "$SRC/main.swift" "$SRC/AppDelegate.swift" "$SRC/WebViewController.swift" "$SRC/ServerProcess.swift" \
   -o "$APP/Contents/MacOS/Hub"
 cp "$SRC/Info.plist" "$APP/Contents/Info.plist"
@@ -43,8 +43,6 @@ cat > "$WORK/Hub.entitlements" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>com.apple.security.device.camera</key>
-  <true/>
-  <key>com.apple.security.device.audio-input</key>
   <true/>
 </dict>
 </plist>

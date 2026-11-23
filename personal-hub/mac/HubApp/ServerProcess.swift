@@ -1,5 +1,5 @@
-// Starts the hub's Node server when nothing answers on its port, and stops it
-// again on quit, but only if this app started it.
+// Starts the hub's Node server when nothing answers on its port, watches the one
+// it started, and stops it again on quit, but only if this app started it.
 
 import Foundation
 
@@ -17,28 +17,37 @@ protocol ServerChild: AnyObject {
     var isRunning: Bool { get }
     func terminate()
     func forceKill()
+    /// Calls `handler` when the process exits, on any thread.
+    func onExit(_ handler: @escaping () -> Void)
 }
 
 extension Process: ServerChild {
     func forceKill() { kill(processIdentifier, SIGKILL) }
+    func onExit(_ handler: @escaping () -> Void) { terminationHandler = { _ in handler() } }
 }
 
-/// One per app run. `ensureRunning` blocks, so call it off the main thread.
+/// One per app run. `ensureRunning` blocks, so call it off the main thread; it can
+/// be called again (⌘R) after the server went down.
 final class ServerProcess {
     typealias Launcher = () throws -> ServerChild
 
     private let launch: Launcher
+    private let onUnexpectedExit: () -> Void
     private let startTimeout: TimeInterval
     private let pollInterval: TimeInterval
     private let pingTimeout: TimeInterval
     private let session: URLSession
     private let lock = NSLock()
     private var child: ServerChild?
+    private var childAnswered = false
     private var stopped = false
 
-    init(launcher: @escaping Launcher, startTimeout: TimeInterval = 15, pollInterval: TimeInterval = 0.25,
-         pingTimeout: TimeInterval = 1) {
+    /// `onUnexpectedExit` runs, on any thread, when a server this app started and
+    /// that had answered exits without `stop()`; once per server.
+    init(launcher: @escaping Launcher, onUnexpectedExit: @escaping () -> Void = {},
+         startTimeout: TimeInterval = 15, pollInterval: TimeInterval = 0.25, pingTimeout: TimeInterval = 1) {
         launch = launcher
+        self.onUnexpectedExit = onUnexpectedExit
         self.startTimeout = startTimeout
         self.pollInterval = pollInterval
         self.pingTimeout = pingTimeout
@@ -55,53 +64,117 @@ final class ServerProcess {
     /// until it answers, it exits, or `startTimeout` passes.
     func ensureRunning(port: Int) -> ServerStartResult {
         if ping(port: port) { return .reused }
+        terminateChild() // an earlier server of ours that stopped answering
 
         let spawned: ServerChild
-        do { spawned = try launch() } catch { return .failed }
+        do {
+            spawned = try launch()
+        } catch {
+            NSLog("%@", "Hub: couldn't start the server: \(error)")
+            return .failed
+        }
         guard adopt(spawned) else { return .failed }
+        spawned.onExit { [weak self, weak spawned] in
+            if let self, let spawned { self.childExited(spawned) }
+        }
 
         let deadline = Date().addingTimeInterval(startTimeout)
         while true {
-            if ping(port: port) { return .started }
+            if ping(port: port) { return answered(spawned) }
+            if !spawned.isRunning {
+                // It may have lost the port to another server that answers now.
+                if ping(port: port) { return answered(spawned) }
+                break
+            }
             let remaining = deadline.timeIntervalSinceNow
-            if remaining <= 0 || !spawned.isRunning { break }
+            if remaining <= 0 { break }
             Thread.sleep(forTimeInterval: min(pollInterval, remaining))
         }
+        // A server that was still booting can answer the moment the deadline passes.
+        if ping(port: port) { return answered(spawned) }
         terminateChild()
         return .failed
     }
 
-    /// Stops the server this app started. A reused server is left alone.
+    /// Stops the server this app started. A reused server is left alone. Returns
+    /// at once; SIGTERM and any SIGKILL are sent on another thread.
     func stop() {
         lock.lock()
         stopped = true
         lock.unlock()
-        terminateChild()
+        terminateChild(inBackground: true)
     }
+
+    /// Test seam: start tracking `spawned` without running the poll loop.
+    func trackedForTesting(_ spawned: ServerChild) { _ = adopt(spawned) }
 
     /// Keeps the spawned server unless `stop()` already ran (the app quit mid-start).
     private func adopt(_ spawned: ServerChild) -> Bool {
         lock.lock()
-        defer { lock.unlock() }
-        if stopped {
-            spawned.terminate()
-            return false
+        let keep = !stopped
+        if keep {
+            child = spawned
+            childAnswered = false
         }
-        child = spawned
-        return true
+        lock.unlock()
+        if !keep { spawned.terminate() }
+        return keep
+    }
+
+    /// A server answered: ours while it is still running, else another one took the port.
+    /// Our own server is never "reused": when it answers just as it exits, nothing is
+    /// left for `stop()` to end, but it answered, so report `.started`.
+    private func answered(_ spawned: ServerChild) -> ServerStartResult {
+        lock.lock()
+        let tracked = child === spawned
+        let running = tracked && spawned.isRunning
+        if running {
+            childAnswered = true
+        } else if tracked {
+            child = nil
+        }
+        lock.unlock()
+        guard tracked else { return .reused }
+        // An exit just before `childAnswered` was set was ignored; catch it here,
+        // but only for a server that had answered while running.
+        if running && !spawned.isRunning { childExited(spawned) }
+        return .started
+    }
+
+    /// Reports the exit of our answering server once, and never after `stop()`.
+    private func childExited(_ exited: ServerChild) {
+        lock.lock()
+        let unexpected = !stopped && childAnswered && child === exited
+        if unexpected {
+            child = nil
+            childAnswered = false
+        }
+        lock.unlock()
+        if unexpected { onUnexpectedExit() }
     }
 
     /// SIGTERM, then SIGKILL if it is still running after 3 s.
-    private func terminateChild() {
+    private func terminateChild(inBackground: Bool = false) {
         lock.lock()
         let running = child
         child = nil
+        childAnswered = false
         lock.unlock()
         guard let running, running.isRunning else { return }
-        running.terminate()
-        let deadline = Date().addingTimeInterval(3)
-        while running.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
-        if running.isRunning { running.forceKill() }
+        let stop: () -> Void = { [self] in
+            _ = self // keep the stopper alive while `stop()` returns at once
+            running.terminate()
+            let deadline = Date().addingTimeInterval(3)
+            while running.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+            if running.isRunning { running.forceKill() }
+        }
+        if inBackground {
+            // An explicitly typed block: a bare closure literal here becomes the async overload.
+            let background: () -> Void = stop
+            DispatchQueue.global(qos: .userInitiated).async(execute: background)
+        } else {
+            stop()
+        }
     }
 
     /// `GET http://127.0.0.1:<port>/api/ping` answered `200 {"ok":true}`.
@@ -149,13 +222,22 @@ struct HubPaths {
         return HubPaths(node: saved.node, repo: saved.repo, dataDir: dataDir)
     }
 
-    /// `port` from `<dataDir>/config.json`, else 4747.
+    /// `port` from `<dataDir>/config.json`, else 4747. A number or a numeric string.
+    /// Creates the data folder first: the server writes its config there on first run.
     func port() -> Int {
+        try? FileManager.default.createDirectory(atPath: dataDir, withIntermediateDirectories: true)
         guard let data = FileManager.default.contents(atPath: dataDir + "/config.json"),
               let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let port = config["port"] as? Int, (1...65_535).contains(port)
+              let port = Self.portNumber(config["port"]), (1...65_535).contains(port)
         else { return Self.defaultPort }
         return port
+    }
+
+    private static func portNumber(_ value: Any?) -> Int? {
+        if let number = value as? Int { return number }
+        if let number = value as? Double { return Int(exactly: number) }
+        if let text = value as? String { return Int(text.trimmingCharacters(in: .whitespaces)) }
+        return nil
     }
 
     /// Spawns `<node> <repo>/personal-hub/server/main.ts` with `HUB_DATA_DIR`
@@ -172,9 +254,10 @@ struct HubPaths {
 
             var environment = ProcessInfo.processInfo.environment
             environment["HUB_DATA_DIR"] = dataDir
-            // Apps get a bare PATH; put node's folder first so the server finds its tools (git, gh).
+            // Apps get a bare PATH; put node's folder and the usual tool folders first (git, gh).
             let nodeDir = (node as NSString).deletingLastPathComponent
-            environment["PATH"] = nodeDir + ":" + (environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin")
+            environment["PATH"] = [nodeDir, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
+                                   environment["PATH"] ?? "/usr/sbin:/sbin"].joined(separator: ":")
 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: node)

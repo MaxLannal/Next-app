@@ -62,14 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let autosaveName = "HubMainWindow"
         if !window.setFrameUsingName(autosaveName) { window.center() }
         window.setFrameAutosaveName(autosaveName)
-
-        // The web view fills the title bar too, so give the window a strip to drag by.
-        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
-        let content = webController.view
-        let strip = TitlebarDragView(frame: NSRect(x: 0, y: content.bounds.height - titlebarHeight,
-                                                   width: content.bounds.width, height: titlebarHeight))
-        strip.autoresizingMask = [.width, .minYMargin]
-        content.addSubview(strip)
+        // The web view fills the title bar too; pages mark their own drag regions with
+        // `-webkit-app-region: drag`, and WebViewController drags from those (no overlay).
         return window
     }
 
@@ -120,20 +114,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: menu.title, action: nil, keyEquivalent: "")
         item.submenu = menu
         main.addItem(item)
-    }
-}
-
-/// Moves the window when dragged, and zooms or minimises on double-click as System Settings says.
-private final class TitlebarDragView: NSView {
-    override func mouseDown(with event: NSEvent) {
-        guard event.clickCount == 2 else {
-            window?.performDrag(with: event)
-            return
-        }
-        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
-        case "Minimize": window?.performMiniaturize(nil)
-        case "None": break
-        default: window?.performZoom(nil)
-        }
     }
 }

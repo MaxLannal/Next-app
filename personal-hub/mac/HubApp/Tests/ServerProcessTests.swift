@@ -6,22 +6,33 @@ import Foundation
 import Network
 
 /// Answers every request with `200 {"ok":true}`, like the hub's `/api/ping`.
+/// `deferred()` holds the port from the start but answers 503 until `start()`.
 final class PingListener {
     private let listener: NWListener
+    private let answering = TestFlag()
+    private let ready = DispatchSemaphore(value: 0)
 
-    init(port: Int) throws {
+    private let answerDelay: TimeInterval
+    private var refusalEnds: Date?
+
+    /// `refusingFor` keeps it on 503 for that long after creation.
+    init(port: Int, answeringNow: Bool = true, answeringAfter: TimeInterval = 0, refusingFor: TimeInterval? = nil) throws {
+        answering.value = answeringNow
+        answerDelay = answeringAfter
+        refusalEnds = refusingFor.map { Date().addingTimeInterval($0) }
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
         listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: UInt16(port))!)
-        let ready = DispatchSemaphore(value: 0)
-        listener.stateUpdateHandler = { state in
+        listener.stateUpdateHandler = { [ready] state in
             if case .ready = state { ready.signal() }
         }
-        listener.newConnectionHandler = { connection in
+        listener.newConnectionHandler = { [answering, answerDelay, self] connection in
             connection.start(queue: .global())
             connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { _, _, _, _ in
-                let body = #"{"ok":true}"#
-                let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                if answerDelay > 0 { Thread.sleep(forTimeInterval: answerDelay) }
+                let up = answering.value || self.refusalEnds.map { Date() >= $0 } == true
+                let (status, body) = up ? ("200 OK", #"{"ok":true}"#) : ("503 Unavailable", "{}")
+                let response = "HTTP/1.1 \(status)\r\nContent-Type: application/json\r\n"
                     + "Content-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
                 connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
             }
@@ -33,17 +44,43 @@ final class PingListener {
         }
     }
 
+    /// A server that holds its port but isn't ready yet: it refuses pings until `start()`.
+    static func deferred(port: Int) throws -> PingListener {
+        try PingListener(port: port, answeringNow: false)
+    }
+
+    func start() { answering.value = true }
+
     func close() { listener.cancel() }
+}
+
+/// A marker shared across queues; `Flag` in ServerProcess.swift is private. Written
+/// with the current time so a stale read looks like an old date, not a value.
+final class TestFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var written: Date?
+    var value: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return written != nil }
+        set { lock.lock(); written = newValue ? Date() : nil; lock.unlock() }
+    }
 }
 
 final class FakeChild: ServerChild {
     private(set) var isRunning: Bool
     private(set) var terminated = 0
     private(set) var killed = 0
+    private var exitHandler: (() -> Void)?
 
-    init(running: Bool) { isRunning = running }
-    func terminate() { terminated += 1; isRunning = false }
+    init(running: Bool, terminateBody: @escaping () -> Void = {}) {
+        isRunning = running
+        self.terminateBody = terminateBody
+    }
+    /// `terminate()` may run on a background thread (`stop()` returns at once).
+    func terminate() { terminateBody(); lock.lock(); terminated += 1; isRunning = false; lock.unlock() }
+    private let lock = NSLock()
+    private let terminateBody: () -> Void
     func forceKill() { killed += 1; isRunning = false }
+    func onExit(_ handler: @escaping () -> Void) { exitHandler = handler }
 }
 
 struct TestError: Error, CustomStringConvertible {
@@ -124,6 +161,9 @@ struct ServerProcessTests {
             try expect(result == .started, "expected .started, got \(result)")
             try expect(child.terminated == 0, "stopped before quit")
             server.stop()
+            let deadline = Date().addingTimeInterval(2)
+            while child.terminated == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+            Thread.sleep(forTimeInterval: 0.1) // let a stray SIGKILL land, if there is one
             try expect(child.terminated == 1, "stop() did not terminate its own server")
             try expect(child.killed == 0, "force-killed a server that had exited")
         }
@@ -140,12 +180,33 @@ struct ServerProcessTests {
         test("reads the port from config.json") {
             let dir = try temporaryDirectory()
             defer { try? FileManager.default.removeItem(at: dir) }
+            let config = dir.appendingPathComponent("config.json")
             let paths = HubPaths(node: "/usr/bin/true", repo: "/repo", dataDir: dir.path)
             try expect(paths.port() == 4747, "no config should mean 4747, got \(paths.port())")
-            try Data(#"{"port": 4828, "timeZone": null}"#.utf8).write(to: dir.appendingPathComponent("config.json"))
+            try Data(#"{"port": 4828, "timeZone": null}"#.utf8).write(to: config)
             try expect(paths.port() == 4828, "expected 4828, got \(paths.port())")
-            try Data("{not json".utf8).write(to: dir.appendingPathComponent("config.json"))
+            try Data(#"{"port": "4828"}"#.utf8).write(to: config)
+            try expect(paths.port() == 4828, "a numeric string should mean 4828, got \(paths.port())")
+            try Data(#"{"port": 0}"#.utf8).write(to: config)
+            try expect(paths.port() == 4747, "out of range should mean 4747, got \(paths.port())")
+            try Data(#"{"port": "abc"}"#.utf8).write(to: config)
+            try expect(paths.port() == 4747, "a non-numeric string should mean 4747, got \(paths.port())")
+            try Data("{not json".utf8).write(to: config)
             try expect(paths.port() == 4747, "a broken config should mean 4747, got \(paths.port())")
+        }
+
+        test("stops its server off the main thread") {
+            // Blocks 0.5 s when told to terminate: a synchronous `stop()` would block its caller.
+            let child = FakeChild(running: true, terminateBody: { Thread.sleep(forTimeInterval: 0.5) })
+            let server = ServerProcess(launcher: { child })
+            server.trackedForTesting(child)
+            let start = Date()
+            server.stop()
+            let elapsed = Date().timeIntervalSince(start)
+            try expect(elapsed < 0.2, "stop() blocked its caller for \(elapsed) s")
+            let deadline = Date().addingTimeInterval(3)
+            while child.terminated == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+            try expect(child.terminated == 1, "stop() never terminated its own server")
         }
 
         test("loads hub-paths.json and honours HUB_APP_DATA_DIR") {
@@ -195,6 +256,33 @@ struct ServerProcessTests {
             try expect(threw, "launching a missing node did not throw")
             let log = try String(contentsOfFile: paths.logFile, encoding: .utf8)
             try expect(log.contains("Couldn't run \(paths.node)"), "log does not say why: \(log)")
+        }
+
+        test("becomes ready just after the start timeout") {
+            let child = FakeChild(running: true)
+            let listener = try PingListener.deferred(port: 4829) // refusing pings until it is ready
+            defer { listener.close() }
+            // Hungry refuses for its first 0.2 s, so the loop's checks stay cheap and
+            // it reaches the 0.3 s deadline. The server boots at 0.2 s, before that:
+            // only the re-ping after the loop can see it answer.
+            let hungry = try PingListener(port: 4828, refusingFor: 0.2)
+            defer { hungry.close() }
+            let server = ServerProcess(launcher: { child }, startTimeout: 0.3, pollInterval: 0.0,
+                                       pingTimeout: 0.35)
+            let boot = Thread {
+                let due = Date().addingTimeInterval(0.2)
+                while Date() < due { Thread.sleep(forTimeInterval: 0.005) }
+                listener.start()
+            }
+            boot.start()
+            let t0 = Date()
+            let result = server.ensureRunning(port: 4829)
+            try expect(result == .started, "expected .started, got \(result) after \(Date().timeIntervalSince(t0)) s")
+            try expect(child.terminated == 0, "stopped a server that had answered")
+            server.stop()
+            let deadline = Date().addingTimeInterval(2)
+            while child.terminated == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+            try expect(child.terminated == 1, "stop() did not terminate its own server")
         }
 
         print(failures == 0 ? "All tests passed" : "\(failures) test(s) failed")
