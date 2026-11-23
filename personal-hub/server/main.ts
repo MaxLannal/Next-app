@@ -5,6 +5,7 @@ import { createConfigStore, hubTimeZone } from './config.ts';
 import { unavailableClaude, unavailableGit, unavailableMac, type AppContext } from './context.ts';
 import { openDb } from './db/index.ts';
 import { defaultDataDir, hubPaths } from './paths.ts';
+import { startHeartbeat } from './services/heartbeat.ts';
 import { createJobQueue } from './services/jobs.ts';
 
 const paths = hubPaths(defaultDataDir());
@@ -22,6 +23,9 @@ const ctx: AppContext = {
   mac: unavailableMac,
   git: unavailableGit,
 };
+
+// Runs once at boot, which catches a server that was down, then every minute.
+startHeartbeat(ctx);
 
 const { port } = config.get();
 serve({ fetch: createApp(ctx).fetch, port, hostname: '0.0.0.0' }, () => {
