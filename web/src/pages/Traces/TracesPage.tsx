@@ -37,18 +37,32 @@ async function placeAt(token: string, lng: number, lat: number): Promise<{ city:
   }
 }
 
-/** A pin: the city over the country and date, on a stem to the spot. */
+/**
+ * A pin: the lit dot on the spot, with the day and the city written straight onto the globe above
+ * it, the way the skill tracker shows a card's title when zoomed out. No box, no stem.
+ */
 function pinElement(): HTMLButtonElement {
   const el = document.createElement('button');
   el.type = 'button';
   el.className = 'trace-pin';
-  el.innerHTML = '<span class="trace-pin__label"><span class="trace-pin__city"></span><span class="trace-pin__meta"></span></span><span class="trace-pin__stem"></span><span class="trace-pin__dot"></span>';
+  el.innerHTML = '<span class="trace-pin__dot"></span><span class="trace-pin__label"><span class="trace-pin__date num"></span><span class="trace-pin__city"></span></span>';
   return el;
+}
+
+/** Hides the map's own city labels for `cities`, on top of each label layer's own filter. */
+function hidePinnedPlaceNames(map: mapboxgl.Map, cities: string[], own: Map<string, mapboxgl.FilterSpecification | null>) {
+  for (const layer of map.getStyle()?.layers ?? []) {
+    if (layer.type !== 'symbol' || !layer.id.startsWith('settlement')) continue;
+    if (!own.has(layer.id)) own.set(layer.id, (map.getFilter(layer.id) as mapboxgl.FilterSpecification | undefined) ?? null);
+    const base = own.get(layer.id) ?? null;
+    const unpinned: mapboxgl.FilterSpecification = ['!', ['in', ['coalesce', ['get', 'name_en'], ['get', 'name']], ['literal', cities]]];
+    map.setFilter(layer.id, cities.length === 0 ? base : base === null ? unpinned : ['all', base, unpinned]);
+  }
 }
 
 function fillPin(el: HTMLElement, t: { city: string; country: string; day: string | null }, selected: boolean) {
   el.querySelector('.trace-pin__city')!.textContent = t.city || placeOf(t);
-  el.querySelector('.trace-pin__meta')!.textContent = [t.city ? t.country : '', whenOf(t)].filter(Boolean).join(' · ');
+  el.querySelector('.trace-pin__date')!.textContent = whenOf(t);
   el.setAttribute('aria-label', [placeOf(t), whenOf(t)].filter(Boolean).join(', '));
   el.classList.toggle('is-selected', selected);
 }
@@ -80,6 +94,8 @@ export function TracesPage() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const pins = useRef(new Map<number, mapboxgl.Marker>());
+  /** The map's place-name layers' own filters, kept so pinned cities can be taken out and put back. */
+  const placeFilters = useRef(new Map<string, mapboxgl.FilterSpecification | null>());
   const draftPin = useRef<mapboxgl.Marker | null>(null);
   // The map's handlers read these, not the render they were made in.
   const live = useRef({ mode, selected, place: (_lng: number, _lat: number) => {}, select: (_id: number) => {} });
@@ -191,7 +207,7 @@ export function TracesPage() {
         ev.stopPropagation();
         live.current.select(t.id);
       });
-      pins.current.set(t.id, new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([t.lng, t.lat]).addTo(map));
+      pins.current.set(t.id, new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([t.lng, t.lat]).addTo(map));
     }
     for (const [id, marker] of pins.current) {
       if (!seen.has(id)) {
@@ -199,6 +215,12 @@ export function TracesPage() {
         pins.current.delete(id);
       }
     }
+
+    // A pinned city already has its name on its dot; the map's own label for it would say it twice.
+    const cities = [...new Set(traces.map((t) => t.city).filter((c) => c !== ''))];
+    const hide = () => hidePinnedPlaceNames(map, cities, placeFilters.current);
+    if (map.isStyleLoaded()) hide();
+    else map.once('style.load', hide);
   }, [traces, selected, mapReady]);
 
   // The new pin, where the globe was tapped, until it is saved or dropped.
@@ -210,7 +232,7 @@ export function TracesPage() {
     const el = pinElement();
     el.classList.add('is-draft');
     fillPin(el, { city: draft.city || 'New trace', country: draft.country, day: draft.day || null }, true);
-    draftPin.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([draft.lng, draft.lat]).addTo(map);
+    draftPin.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([draft.lng, draft.lat]).addTo(map);
   }, [draft, mapReady]);
 
   // Esc leaves placing, or the form.
