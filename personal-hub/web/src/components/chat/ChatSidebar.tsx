@@ -59,7 +59,10 @@ export function ChatSidebar() {
     openKey: 'hub:chat-open',
     defaultCollapsed: true,
   });
-  const open = !panel.collapsed;
+  // A saved open state comes back on desktop only: on a small screen the sheet takes the whole
+  // page (and the keyboard), so it opens only when the user taps the pill in this visit.
+  const [tappedOpen, setTappedOpen] = useState(false);
+  const open = !panel.collapsed && (desktop || tappedOpen);
   const { pathname } = useLocation();
   const chat = useChat();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
@@ -82,10 +85,12 @@ export function ChatSidebar() {
 
   const show = () => {
     focusNext.current = 'field';
+    setTappedOpen(true);
     panel.setOpen(true);
   };
   const hide = () => {
     focusNext.current = 'pill';
+    setTappedOpen(false);
     panel.setOpen(false);
   };
 
@@ -168,7 +173,8 @@ export function ChatSidebar() {
   );
 
   const onPanelKey = (e: KeyboardEvent<HTMLElement>) => {
-    if (e.key !== 'Escape') return;
+    // Esc that only dismisses an input method's candidates (Chinese, Japanese…) must not close the chat.
+    if (e.key !== 'Escape' || e.nativeEvent.isComposing) return;
     e.stopPropagation();
     hide();
   };
@@ -238,7 +244,7 @@ function ChatSheet({ id, titleId, fieldRef, headingRef, onClose, children }: Cha
   }, [fieldRef, headingRef]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
       e.stopPropagation();
       onClose();
       return;

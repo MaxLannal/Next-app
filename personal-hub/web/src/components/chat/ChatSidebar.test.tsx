@@ -401,3 +401,27 @@ describe('sseParser', () => {
     ]);
   });
 });
+
+describe('small screens and input methods', () => {
+  it('never reopens the sheet by itself on a narrow screen, even when open was saved', async () => {
+    stubWidth(false);
+    stubHub(QUIET);
+    renderSidebar('/', { open: true });
+    const pill = await screen.findByRole('button', { name: 'Chat' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(pill.getAttribute('aria-expanded')).toBe('false');
+    await userEvent.click(pill);
+    expect(await screen.findByRole('dialog', { name: 'Chat' })).toBeTruthy();
+  });
+
+  it('keeps the overlay open when Esc only dismisses an input method candidate', async () => {
+    stubWidth(true);
+    stubHub(QUIET);
+    renderSidebar('/', { open: true });
+    const field = await screen.findByLabelText('Ask Claude');
+    fireEvent.keyDown(field, { key: 'Escape', isComposing: true });
+    expect(screen.getByLabelText('Ask Claude')).toBeTruthy();
+    fireEvent.keyDown(field, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByLabelText('Ask Claude')).toBeNull());
+  });
+});
