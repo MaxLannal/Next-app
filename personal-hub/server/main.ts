@@ -5,13 +5,17 @@ import { createConfigStore, hubTimeZone } from './config.ts';
 import { unavailableClaude, unavailableGit, type AppContext } from './context.ts';
 import { openDb } from './db/index.ts';
 import { defaultDataDir, hubPaths } from './paths.ts';
+import { createGitSync, hookAttachmentPushes } from './services/git-sync.ts';
 import { startHeartbeat } from './services/heartbeat.ts';
 import { createJobQueue } from './services/jobs.ts';
 import { createMacBridge } from './services/mac.ts';
 
+const PULL_EVERY_MS = 2 * 60_000;
+
 const paths = hubPaths(defaultDataDir());
 const config = createConfigStore(paths.configFile);
 
+// Built without git first: the sync reads the finished context.
 const ctx: AppContext = {
   db: openDb(paths.dbFile),
   paths,
@@ -24,9 +28,19 @@ const ctx: AppContext = {
   mac: createMacBridge(paths),
   git: unavailableGit,
 };
+ctx.git = createGitSync(ctx);
+hookAttachmentPushes(ctx);
 
 // Runs once at boot, which catches a server that was down, then every minute.
 startHeartbeat(ctx);
+
+// Pulls what was committed elsewhere every 2 minutes. The queue makes it wait for a running push.
+const pullTimer = setInterval(() => {
+  ctx.jobs.enqueue('git-pull', async () => {
+    await ctx.git.pull();
+  });
+}, PULL_EVERY_MS);
+pullTimer.unref();
 
 const { port } = config.get();
 serve({ fetch: createApp(ctx).fetch, port, hostname: '0.0.0.0' }, () => {
