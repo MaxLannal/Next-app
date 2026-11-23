@@ -99,7 +99,7 @@ describe('Pie', () => {
 
 describe('Heatmap', () => {
   const cell = (container: HTMLElement, date: string) => {
-    const el = container.querySelector(`rect[data-date="${date}"]`);
+    const el = container.querySelector<SVGRectElement>(`rect[data-date="${date}"]`);
     if (!el) throw new Error(`no cell for ${date}`);
     return el;
   };
@@ -160,10 +160,47 @@ describe('Heatmap', () => {
     await user.keyboard('{Home}');
     expect(document.activeElement).toBe(cell(container, '2026-01-01'));
 
+    // The ring follows the focused cell: paper-dark under periwinkle.
+    const rings = [...container.querySelectorAll('rect.heatmap__ring')];
+    expect(rings.map((r) => r.classList.contains('heatmap__ring--accent'))).toEqual([false, true]);
+    expect(rings.map((r) => r.getAttribute('x'))).toEqual(['28', '28']);
+
     onActiveDay.mockClear();
     await user.tab();
     expect(onActiveDay).toHaveBeenCalledExactlyOnceWith(null);
     expect(tip()).toBeNull();
+    expect(container.querySelectorAll('rect.heatmap__ring')).toHaveLength(0);
+  });
+
+  it('reports a clicked cell through onPick, and focuses it', async () => {
+    const user = userEvent.setup();
+    const onPick = vi.fn();
+    const { container } = render(<Heatmap year={2026} days={[]} onActiveDay={() => {}} onPick={onPick} describe={(d) => d.date} />);
+
+    await user.click(cell(container, '2026-04-06'));
+    expect(onPick).toHaveBeenCalledExactlyOnceWith('2026-04-06');
+    expect(document.activeElement).toBe(cell(container, '2026-04-06'));
+  });
+
+  it('rings the pinned day while nothing is hovered or focused', async () => {
+    const user = userEvent.setup();
+    const { container, rerender } = render(
+      <Heatmap year={2026} days={[]} onActiveDay={() => {}} describe={(d) => d.date} pinned="2026-03-02" />,
+    );
+    const ringX = () => container.querySelector('rect.heatmap__ring')?.getAttribute('x');
+
+    // March 2 is in week column 9, so its cell x is 156 and the ring sits 2 px outside it.
+    expect(cell(container, '2026-03-02').getAttribute('aria-colindex')).toBe('10');
+    expect(ringX()).toBe('154');
+
+    // A hover shows its own outline and the pinned ring steps aside.
+    await user.hover(cell(container, '2026-05-04'));
+    expect(ringX()).toBeUndefined();
+    await user.unhover(cell(container, '2026-05-04'));
+    expect(ringX()).toBe('154');
+
+    rerender(<Heatmap year={2026} days={[]} onActiveDay={() => {}} describe={(d) => d.date} pinned={null} />);
+    expect(ringX()).toBeUndefined();
   });
 
   it('shows the tooltip on hover', async () => {
@@ -180,6 +217,71 @@ describe('Heatmap', () => {
     await user.unhover(cell(container, '2026-03-02'));
     expect(container.querySelector('.chart-tip')).toBeNull();
     expect(onActiveDay).toHaveBeenLastCalledWith(null);
+  });
+
+  it('keeps the keyboard focus while the pointer rests on another day', async () => {
+    const user = userEvent.setup();
+    const onActiveDay = vi.fn();
+    const { container } = render(
+      <Heatmap year={2026} days={[]} onActiveDay={onActiveDay} describe={(d) => `about ${d.date}`} />,
+    );
+
+    // The keyboard is where the reader is: a stray hover never takes the tip away.
+    cell(container, '2026-01-01').focus();
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(cell(container, '2026-01-08'));
+    await user.hover(cell(container, '2026-03-02'));
+    expect(container.querySelector('.chart-tip')?.textContent).toBe('about 2026-01-08');
+    await user.unhover(cell(container, '2026-03-02'));
+    expect(container.querySelector('.chart-tip')?.textContent).toBe('about 2026-01-08');
+    expect(onActiveDay).toHaveBeenLastCalledWith(expect.objectContaining({ date: '2026-01-08' }));
+
+    // Out of the grid, the pointer is in charge.
+    await user.tab();
+    await user.hover(cell(container, '2026-03-02'));
+    expect(container.querySelector('.chart-tip')?.textContent).toBe('about 2026-03-02');
+  });
+
+  it('leaves modifier-arrow keys to the browser', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Heatmap year={2026} days={[]} onActiveDay={() => {}} describe={(d) => d.date} />);
+
+    await user.tab();
+    for (const chord of ['{Shift>}{ArrowRight}{/Shift}', '{Alt>}{ArrowDown}{/Alt}', '{Meta>}{ArrowLeft}{/Meta}', '{Control>}{End}{/Control}']) {
+      await user.keyboard(chord);
+      expect(document.activeElement).toBe(cell(container, '2026-01-01'));
+      expect(cell(container, '2026-01-01').getAttribute('tabindex')).toBe('0');
+    }
+  });
+
+  it('keeps the tooltip over its day as the grid scrolls', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Heatmap year={2026} days={[]} onActiveDay={() => {}} describe={(d) => d.date} />);
+    const scroller = container.querySelector('.heatmap__scroll');
+    if (!(scroller instanceof HTMLElement)) throw new Error('no scroller');
+    const left = () => {
+      const raw = container.querySelector<HTMLElement>('.chart-tip')?.style.transform ?? '';
+      return Number(raw.slice('translateX('.length, -'px)'.length));
+    };
+    const scrollTo = (x: number) => {
+      // jsdom never lays the grid out, so `scrollLeft` alone would stay 0.
+      Object.defineProperty(scroller, 'scrollLeft', { configurable: true, value: x });
+      act(() => void scroller.dispatchEvent(new Event('scroll')));
+    };
+
+    // Scrolled 300 px in, July sits where the reader sees it, not at its year column.
+    scrollTo(300);
+    await user.hover(cell(container, '2026-07-15'));
+    const rested = left();
+    expect(cell(container, '2026-07-15').getAttribute('aria-colindex')).toBe('29');
+    // July 15's centre is 427.5 px across the grid, so 300 px of scroll leaves it 127.5 px into
+    // view. Its year column would put the tip far off to the right.
+    expect(rested).toBe(127.5);
+
+    scrollTo(200);
+    expect(left()).toBe(227.5);
+    // Only the tooltip moves: the 365 cells are not re-rendered by a scroll.
+    expect(container.querySelectorAll('rect[data-date]')).toHaveLength(365);
   });
 });
 

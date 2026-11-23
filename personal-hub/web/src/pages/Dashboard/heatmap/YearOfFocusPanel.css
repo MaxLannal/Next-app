@@ -1,0 +1,31 @@
+/* Year of focus: the year's heatmap on the left, the ring and its ruled tally on the right;
+   one column on a phone. The hours are the statement, so a tall ring above a ruled tally. */
+
+.yof { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); align-items: start; gap: var(--space-xl); }
+
+/* The year, as words rather than a boxed control: a quiet pill with a chevron. */
+.yof__year { position: relative; display: inline-flex; align-items: baseline; gap: var(--space-xs); min-height: 30px; padding: 0 var(--space-sm); border: 0; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--color-light) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 12%, transparent); color: var(--color-ink); font: 500 0.9375rem/1 var(--font-display); font-variant-numeric: tabular-nums; cursor: pointer; appearance: none; }
+.yof__year:hover { background: color-mix(in oklab, var(--color-light) 9%, transparent); }
+.yof__year:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.yof__year::after { content: ""; width: 6px; height: 6px; margin-top: -3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-1px); opacity: 0.7; }
+
+.yof__chart { display: grid; gap: var(--space-md); min-width: 0; }
+
+/* Right column: the ring, the day it stands for, and the tally under a rule. */
+.yof__side { display: grid; justify-items: start; gap: var(--space-md); min-width: 0; }
+.yof__figure { display: grid; justify-items: start; gap: var(--space-sm); }
+.yof__where { margin: 0; max-width: 32ch; font-size: var(--text-sm); color: var(--color-muted); }
+.yof__where strong { font-weight: 500; color: var(--color-ink-2); }
+
+.yof__tally { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-lg); width: 100%; margin: 0; padding-top: var(--space-sm); border-top: 1px solid var(--color-rule); }
+.yof__tally > div { padding-top: var(--space-sm); }
+.yof__tally dt { font-size: var(--text-xs); color: var(--color-muted); }
+.yof__tally dd { margin: 2px 0 0; font: 500 1.25rem/1.1 var(--font-display); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+
+.yof__wait { min-height: 140px; margin: 0; font-size: var(--text-sm); color: var(--color-muted); }
+
+@media (max-width: 60rem) {
+  .yof { grid-template-columns: minmax(0, 1fr); }
+  .yof__side { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .yof__tally { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

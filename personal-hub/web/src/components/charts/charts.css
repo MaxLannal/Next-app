@@ -39,7 +39,10 @@
 .heatmap__cell { cursor: default; }
 .heatmap__cell:hover { stroke: color-mix(in oklab, var(--color-light) 45%, transparent); stroke-width: 1px; }
 .heatmap__cell:focus { outline: none; }
-.heatmap__cell:focus-visible { outline: none; stroke: var(--color-focus); stroke-width: 2px; }
+/* The ring sits outside the fill (drawn by Heatmap.tsx): a dark outer line, then periwinkle. */
+.heatmap__cell:focus-visible { outline: none; }
+.heatmap__ring { fill: none; stroke: var(--color-paper); stroke-width: 4px; }
+.heatmap__ring--accent { stroke: var(--color-focus); stroke-width: 2px; }
 
 /* ── Stacked bar: one horizontal bar, the legend below ─────────────────── */
 .stack { display: grid; gap: var(--space-sm); min-width: 0; }
