@@ -41,14 +41,14 @@ const ImageUpload = Extension.create({
     return [
       new Plugin({
         props: {
-          handlePaste(view, event) {
+          handlePaste(view, event: ClipboardEvent) {
             const pasted = files(event.clipboardData?.files ?? null);
             if (pasted.length === 0) return false;
             event.preventDefault();
             place(view, pasted);
             return true;
           },
-          handleDrop(view, event) {
+          handleDrop(view, event: DragEvent) {
             const dropped = files((event as DragEvent).dataTransfer?.files ?? null);
             if (dropped.length === 0) return false;
             event.preventDefault();
