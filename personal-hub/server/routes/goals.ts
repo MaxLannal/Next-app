@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono';
-import type { Goal } from '../../shared/types.ts';
+import { isDayKey, type Goal } from '../../shared/types.ts';
 import type { AppContext } from '../context.ts';
 import { estimateAccuracy } from '../lib/goals.ts';
 import { dayKey } from '../lib/time.ts';
@@ -21,12 +21,6 @@ async function jsonBody(c: Context): Promise<Record<string, unknown>> {
   return typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
-const isDay = (v: unknown): v is string => {
-  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
-  const d = new Date(`${v}T00:00:00.000Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
-};
-
 type Plan = { deadline: string | null; plannedMinutes: number | null };
 
 /** Reads the plan fields present in `body`; a field set to null clears it. */
@@ -34,7 +28,7 @@ function readPlan(body: Record<string, unknown>): { error: string } | { plan: Pa
   const plan: Partial<Plan> = {};
   if (body.deadline !== undefined) {
     if (body.deadline === null || body.deadline === '') plan.deadline = null;
-    else if (isDay(body.deadline)) plan.deadline = body.deadline;
+    else if (isDayKey(body.deadline)) plan.deadline = body.deadline;
     else return { error: 'Deadline must be a real YYYY-MM-DD day' };
   }
   if (body.plannedMinutes !== undefined) {
@@ -59,8 +53,8 @@ export function goalRoutes(ctx: AppContext): Hono {
   routes.get('/', (c) => {
     const statusRaw = c.req.query('status') ?? 'open';
     if (!(STATUSES as string[]).includes(statusRaw)) return c.json({ error: 'Status must be open, done or archived' }, 400);
-    const { today, tz } = view();
-    return c.json(listGoals(ctx.db, statusRaw as GoalStatus, today, tz));
+    const { now, today, tz } = view();
+    return c.json(listGoals(ctx.db, statusRaw as GoalStatus, today, tz, now));
   });
 
   // Before `/:id` so the word is never read as an id.
@@ -77,7 +71,7 @@ export function goalRoutes(ctx: AppContext): Hono {
       { title: body.title.trim(), deadline: read.plan.deadline ?? null, plannedMinutes: read.plan.plannedMinutes ?? null },
       now,
     );
-    return c.json(getGoal(ctx.db, id, today, tz) as Goal, 201);
+    return c.json(getGoal(ctx.db, id, today, tz, now) as Goal, 201);
   });
 
   routes.patch('/:id', async (c) => {
@@ -103,8 +97,8 @@ export function goalRoutes(ctx: AppContext): Hono {
     const changed = updateGoal(ctx.db, id, edit, ctx.now());
     if (changed === null) return c.json({ error: 'Not found' }, 404);
     if (changed === 'done') return c.json({ error: 'This goal is done; its plan can no longer change' }, 409);
-    const { today, tz } = view();
-    return c.json(getGoal(ctx.db, id, today, tz));
+    const { now, today, tz } = view();
+    return c.json(getGoal(ctx.db, id, today, tz, now));
   });
 
   routes.delete('/:id', (c) => {

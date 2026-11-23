@@ -17,6 +17,7 @@
 .goal-plan__field:focus-visible { outline: none; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
 .goal-plan__field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--color-accent-2); }
 .goal-plan__field::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+.goal-plan__hint { font-size: var(--text-xs); color: var(--color-accent-2); }
 .goal-plan__acts { display: flex; gap: var(--space-xs); margin-left: auto; }
 
 /* Rows: title and figures on the left, Done and ⋯ on the right. */
@@ -45,6 +46,12 @@
 .goal__ask { font-size: var(--text-sm); color: var(--color-muted); }
 .goal__more { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--color-muted); font-size: 1.125rem; line-height: 1; cursor: pointer; transition: background-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
 .goal__more:hover, .goal__more[aria-expanded="true"] { background: color-mix(in oklab, var(--color-light) 7%, transparent); color: var(--color-ink); }
+
+/* Motion stops under reduced motion, like every Dusk surface. */
+@media (prefers-reduced-motion: reduce) {
+  .goal__menu { animation: none; }
+  .goal__fill { transition: none; }
+}
 
 /* The menu is the one raised surface over the panel: smoked glass with its lit edge, not glass on glass. */
 .goal__menu { position: absolute; z-index: var(--z-dropdown); top: calc(100% + 4px); right: 0; display: grid; min-width: 9rem; padding: var(--space-xs); border-radius: var(--radius-inner); background: var(--color-paper-2); box-shadow: var(--glass-hi), 0 18px 40px -20px oklch(8% 0.02 268 / 0.8); animation: goal-menu-in var(--dur-short) var(--ease-out); }

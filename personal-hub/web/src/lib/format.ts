@@ -45,8 +45,9 @@ export function formatHours(seconds: number): string {
 /** `"26 Nov"`: the day and the month, for a deadline or a projection. */
 export function formatDayShort(dayKey: string): string {
   const match = DAY_KEY.exec(dayKey);
-  if (!match) return formatShortDate(dayKey);
-  return `${Number(match[3])} ${MONTHS[Number(match[2]) - 1]}`;
+  if (!match) return dayKey;
+  const month = MONTHS[Number(match[2]) - 1];
+  return month === undefined ? dayKey : `${Number(match[3])} ${month}`;
 }
 
 /** `"Sun 22 Nov"`. A day key (`2026-11-22`) is that calendar day; an instant is its local day. */

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { isDayKey } from '@shared/types.ts';
 
 type PlanPromptProps = {
   /** Prefilled from the current plan when re-planning; empty for a new goal. */
@@ -10,10 +11,10 @@ type PlanPromptProps = {
   autoFocus?: boolean;
 };
 
-const isValidDay = (v: string) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
-  const d = new Date(`${v}T00:00:00.000Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+/** The hub's local day at load, as the date field's floor: a deadline is not in the past. */
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 /**
@@ -32,7 +33,9 @@ export function PlanPrompt({ initialDeadline = null, initialHours = '', onSave, 
 
   const hoursValue = hours.trim() === '' ? null : Number(hours.replace(',', '.'));
   const badHours = hoursValue !== null && (!Number.isFinite(hoursValue) || hoursValue <= 0);
-  const badDeadline = deadline.trim() !== '' && !isValidDay(deadline.trim());
+  const today = useRef(todayKey()).current;
+  const badDeadline = deadline.trim() !== '' && !isDayKey(deadline.trim());
+  const pastDeadline = !badDeadline && deadline.trim() !== '' && deadline.trim() < today;
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -61,8 +64,10 @@ export function PlanPrompt({ initialDeadline = null, initialHours = '', onSave, 
         id={`${id}-date`}
         className="goal-plan__field"
         type="date"
+        min={today}
         value={deadline}
         aria-invalid={badDeadline}
+        aria-describedby={pastDeadline ? `${id}-past` : undefined}
         onChange={(e) => setDeadline(e.target.value)}
       />
       <span className="goal-plan__or">or</span>
@@ -84,6 +89,11 @@ export function PlanPrompt({ initialDeadline = null, initialHours = '', onSave, 
       <span className="goal-plan__unit" aria-hidden="true">
         hours
       </span>
+      {pastDeadline && (
+        <span className="goal-plan__hint" id={`${id}-past`}>
+          That day has passed.
+        </span>
+      )}
       <span className="goal-plan__acts">
         <button className="btn btn-ghost btn-sm" type="submit">
           Save

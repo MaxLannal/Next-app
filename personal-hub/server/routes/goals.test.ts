@@ -204,25 +204,6 @@ it('unknown goals and bad ids are 404', async () => {
   expect((await t.req('DELETE', '/api/goals/999')).status).toBe(404);
 });
 
-it('a goal’s progress uses its focus, the last 14 days and today', async () => {
-  const goal = await create({ title: 'Finish Ch. 4', plannedMinutes: 600 });
-  // The clock is noon in Chicago; seeded hours end one and two hours before it, yesterday.
-  // The helper's two hours fall on the local 21st and 20th, yesterday and the day before.
-  // 2 h of 10 h done at a pace of 3 h over 14 days; the record below is what the pace makes.
-  seedHour(goal.id, YESTERDAY);
-  seedHour(goal.id, TWO_DAYS_AGO);
-  const [row] = await list();
-  expect(row.focusedSeconds).toBe(2 * 3600);
-  expect(row.progress).toMatchObject({
-    mode: 'hours',
-    fraction: 0.2,
-    fractionKind: 'work',
-    projectedFinish: '2027-01-17',
-    noRecentPace: false,
-    atRisk: false,
-  });
-});
-
 it('accuracy medians tell the truth about original plans', async () => {
   // Planned 10 h; took 1 h and finished the same day.
   const fast = await create({ title: 'Fast', plannedMinutes: 600 });
@@ -241,18 +222,77 @@ it('accuracy medians tell the truth about original plans', async () => {
   expect((await accuracy()).dates).toBeNull();
 });
 
-it('goal focus ignores other goals, and only the window sets the pace', async () => {
+it('a goal’s progress uses live focus and the last 14 days for the pace', async () => {
   const goal = await create({ title: 'Finish Ch. 4', plannedMinutes: 600 });
-  const other = await create({ title: 'Other', plannedMinutes: 600 });
-  seedHour(goal.id, YESTERDAY);
-  seedHour(other.id, TWO_DAYS_AGO);
-  const before = (await list()).find((g) => g.id === goal.id);
-  expect(before?.focusedSeconds).toBe(3600);
-  seedHour(goal.id, '2026-11-02T14:00:00.000Z');
-  const row = (await list()).find((g) => g.id === goal.id)!;
-  // The old hour counts towards the bar but not the pace, and the other goal's hour is not
-  // ours: 2 h of 10 h done, at 1 h in the window over 14 days (0.5 h a day), 8 h left → 16
-  // days, 8 December.
+  // Two hours on Sunday 15 November, both inside the window; a pace of 2 h a day. 8 h left at
+  // 2 h a day is 28 days: 14 to 20 December, then 14 into January, 17 January.
+  seedHour(goal.id, '2026-11-15T16:00:00.000Z');
+  seedHour(goal.id, '2026-11-15T18:00:00.000Z');
+  const [row] = await list();
   expect(row.focusedSeconds).toBe(2 * 3600);
-  expect(row.progress).toMatchObject({ fraction: 0.2, projectedFinish: '2027-03-14' });
+  expect(row.progress).toMatchObject({
+    mode: 'hours',
+    fraction: 0.2,
+    fractionKind: 'work',
+    projectedFinish: '2027-01-17',
+    noRecentPace: false,
+    atRisk: false,
+  });
+});
+
+it('a running session contributes its live time', async () => {
+  const goal = await create({ title: 'Finish Ch. 4', plannedMinutes: 600 });
+  // Started 90 minutes before the clock and still running: focus_seconds is still 0.
+  const started = new Date(Date.parse(TEST_NOW) - 90 * 60_000);
+  const { lastInsertRowid } = t.db
+    .prepare(
+      `INSERT INTO focus_sessions (name, goal_id, status, started_at, created_at)
+       VALUES ('Chapter 4', ?, 'running', ?, ?)`,
+    )
+    .run(goal.id, started.toISOString(), started.toISOString());
+  appendEvent(t.db, Number(lastInsertRowid), 'start', started);
+
+  const [row] = await list();
+  expect(row.focusedSeconds).toBe(90 * 60);
+  // 1.5 h of 10 h; 8.5 h left at 1.5 h a day is 79.33 days, so 80 more: 8 to the end of
+  // November, 31 for December, 31 for January, then 10 more, 10 February.
+  expect(row.progress).toMatchObject({ fraction: 0.15, projectedFinish: '2027-02-10' });
+});
+
+it('editing a session’s start time moves the 14-day window', async () => {
+  const goal = await create({ title: 'Finish Ch. 4', plannedMinutes: 600 });
+  const started = new Date('2026-11-02T14:00:00.000Z');
+  const ended = new Date('2026-11-02T15:00:00.000Z');
+  const { lastInsertRowid } = t.db
+    .prepare(
+      `INSERT INTO focus_sessions (name, goal_id, status, started_at, ended_at, created_at)
+       VALUES ('Chapter 4', ?, 'done', ?, ?, ?)`,
+    )
+    .run(goal.id, started.toISOString(), ended.toISOString(), started.toISOString());
+  const id = Number(lastInsertRowid);
+  appendEvent(t.db, id, 'start', started);
+  appendEvent(t.db, id, 'stop', ended);
+  recomputeFocus(t.db, id, ended);
+
+  // 2 November is outside the window, so there is no recent pace.
+  expect((await list())[0].progress.noRecentPace).toBe(true);
+
+  // The session was really yesterday: its events move, and the pace appears without a recompute.
+  const moved = new Date('2026-11-21T16:00:00.000Z');
+  t.db.prepare('UPDATE session_events SET at = ? WHERE session_id = ? AND type = ?').run(moved.toISOString(), id, 'start');
+  t.db.prepare('UPDATE session_events SET at = ? WHERE session_id = ? AND type = ?').run('2026-11-21T17:00:00.000Z', id, 'stop');
+  const [row] = await list();
+  expect(row.progress.noRecentPace).toBe(false);
+  // 1 h of its 10 h done, at 1 h a day; 9 h left → 126 days: 8 to the end of November,
+  // 31 + 31 + 28 for December to February, 28 more into March.
+  expect(row.progress).toMatchObject({ fraction: 0.1, projectedFinish: '2027-03-28' });
+});
+
+it('a re-plan writes exactly one history row and updates the goal, atomically', async () => {
+  const goal = await create({ title: 'Finish Ch. 4', plannedMinutes: 600 });
+  await patch(goal.id, { plannedMinutes: 900 });
+  const rows = t.db.prepare('SELECT * FROM goal_plan_history WHERE goal_id = ?').all(goal.id);
+  expect(rows).toHaveLength(1);
+  const stored = t.db.prepare('SELECT planned_minutes, original_planned_minutes FROM goals WHERE id = ?').get(goal.id);
+  expect(stored).toEqual({ planned_minutes: 900, original_planned_minutes: 600 });
 });

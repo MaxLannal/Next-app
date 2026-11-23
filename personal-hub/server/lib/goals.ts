@@ -35,11 +35,6 @@ function daysBetween(a: string, b: string): number {
   return Math.round(dayNumber(b) - dayNumber(a));
 }
 
-/** Whole days to wait; a float quotient that lands within a millionth of a whole day is that day. */
-function daysToFinish(remainingSeconds: number, pacePerDay: number): number {
-  return Math.ceil(remainingSeconds / pacePerDay - 1e-6);
-}
-
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 /**
@@ -79,12 +74,13 @@ export function goalProgress(i: GoalProgressInput): GoalProgress {
   const done = plannedSeconds ?? 0;
   const remaining = Math.max(0, done - i.focusedSeconds);
   const noRecentPace = i.last14Seconds === 0;
-  const pace = i.last14Seconds / PACE_DAYS;
   const daysLeft = i.plan.deadline === null ? null : daysBetween(i.today, i.plan.deadline);
 
   // Nothing left means done today; no focus in 14 days means there is no pace to project from.
   const usefulPace = !noRecentPace && remaining > 0;
-  const projectedFinish = remaining === 0 ? i.today : usefulPace ? addDays(i.today, daysToFinish(remaining, pace)) : null;
+  // Whole-unit days: ceil(remaining × 14 / last14), with the quotient formed once.
+  const pdays = Math.ceil(remaining * PACE_DAYS / i.last14Seconds);
+  const projectedFinish = remaining === 0 ? i.today : usefulPace ? addDays(i.today, pdays) : null;
 
   // Both: at risk when the projection lands after the deadline, or there is no pace and
   // seven days or fewer are left.

@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, GoalAccuracy } from '@shared/types.ts';
 import { GoalsPanel } from './GoalsPanel.tsx';
+import { PlanPrompt } from './PlanPrompt.tsx';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -216,8 +217,13 @@ describe('GoalsPanel', () => {
 
     await user.click(within(first).getByRole('button', { name: 'More actions' }));
     await user.click(within(first).getByRole('button', { name: 'Re-plan' }));
-    await user.type(within(first).getByRole('spinbutton', { name: 'How long, in hours' }), '12{Enter}');
-    await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH').length).toBe(2));
+    const hours = within(first).getByRole('spinbutton', { name: 'How long, in hours' });
+    // The prompt is prefilled with the current 10 h; retyping it to 12 sends just the hours.
+    expect((hours as HTMLInputElement).value).toBe('10');
+    await user.clear(hours);
+    await user.type(hours, '12');
+    fireEvent.submit(within(first).getByRole('form', { name: 'Plan this goal' }));
+    await waitFor(() => expect(lastPatch(fetchMock)).toEqual({ plannedMinutes: 720 }));
 
     await user.click(within(first).getByRole('button', { name: 'More actions' }));
     await user.click(within(first).getByRole('button', { name: 'Delete' }));
@@ -268,5 +274,28 @@ describe('GoalsPanel', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     await waitFor(() => expect(screen.getByText('Hours ×1.4 · Dates ×1.4 · 3 goals')).toBeTruthy());
     expect(screen.getByText('12 h of 10 h')).toBeTruthy();
+  });
+});
+
+describe('PlanPrompt', () => {
+  it('takes a date or hours, saves both when given, and warns about a past day', async () => {
+    const user = userEvent.setup();
+    stubHub({});
+    const onSave = vi.fn();
+    render(
+      <>
+        <PlanPrompt autoFocus onSave={onSave} onSkip={() => {}} />
+      </>,
+    );
+    const date = screen.getByLabelText('By when, a date');
+    // A day already gone is allowed but flagged.
+    await user.type(date, '2000-01-01');
+    expect(screen.getByText('That day has passed.')).toBeTruthy();
+    const hoursField = screen.getByRole('spinbutton', { name: 'How long, in hours' });
+    await user.type(hoursField, '1.5');
+    // The Save pill submits the prompt.
+    // jsdom does not run a submit button's default action, so submit the form directly.
+    fireEvent.submit(screen.getByRole('form', { name: 'Plan this goal' }));
+    expect(onSave).toHaveBeenCalledWith({ deadline: '2000-01-01', plannedMinutes: 90 });
   });
 });

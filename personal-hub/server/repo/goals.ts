@@ -1,7 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { Goal } from '../../shared/types.ts';
 import { goalProgress, type GoalPlan } from '../lib/goals.ts';
-import { addDays, dayKey, dayStart } from '../lib/time.ts';
+import { addDays, dayKey } from '../lib/time.ts';
+import { goalFocusSeconds, transaction } from './sessions.ts';
 
 export type GoalStatus = Goal['status'];
 
@@ -23,24 +24,12 @@ export type GoalEdit = { title?: string; deadline?: string | null; plannedMinute
 const planOf = (deadline: string | null, plannedMinutes: number | null): GoalPlan => ({ deadline, plannedMinutes });
 
 /**
- * All focus on one goal, and the share of it that started in the last 14 calendar days
- * (today included). A session that crosses midnight counts by its whole stored focus.
+ * Focus on the goal, read from its sessions' timer events: live for a running one, and
+ * following any edit to a session's times. `today` sets the 14-day window the pace uses.
  */
-function goalSeconds(db: DatabaseSync, goalId: number, last14From: Date): { total: number; recent: number } {
-  const rows = db
-    .prepare('SELECT focus_seconds, started_at FROM focus_sessions WHERE goal_id = ?')
-    .all(goalId) as { focus_seconds: number; started_at: string }[];
-  let total = 0;
-  let recent = 0;
-  for (const r of rows) {
-    total += r.focus_seconds;
-    if (Date.parse(r.started_at) >= last14From.getTime()) recent += r.focus_seconds;
-  }
-  return { total, recent };
-}
-
-function toGoal(db: DatabaseSync, row: GoalRow, today: string, tz: string, last14From: Date): Goal {
-  const { total, recent } = goalSeconds(db, row.id, last14From);
+function toGoal(db: DatabaseSync, row: GoalRow, today: string, tz: string, now: Date): Goal {
+  const total = goalFocusSeconds(db, row.id, tz, now);
+  const recent = goalFocusSeconds(db, row.id, tz, now, addDays(today, -13));
   return {
     id: row.id,
     title: row.title,
@@ -62,21 +51,17 @@ function toGoal(db: DatabaseSync, row: GoalRow, today: string, tz: string, last1
   };
 }
 
-/** The first instant of the first of the last 14 local days, today included. */
-const last14FromDay = (today: string, tz: string) => dayStart(addDays(today, -13), tz);
-
 /** The goal with that id, or null. */
-export function getGoal(db: DatabaseSync, id: number, today: string, tz: string): Goal | null {
+export function getGoal(db: DatabaseSync, id: number, today: string, tz: string, now: Date): Goal | null {
   const row = db.prepare('SELECT * FROM goals WHERE id = ?').get(id) as GoalRow | undefined;
-  return row ? toGoal(db, row, today, tz, last14FromDay(today, tz)) : null;
+  return row ? toGoal(db, row, today, tz, now) : null;
 }
 
 /** Open goals newest first; done and archived newest first by the day they got there. */
-export function listGoals(db: DatabaseSync, status: GoalStatus, today: string, tz: string): Goal[] {
+export function listGoals(db: DatabaseSync, status: GoalStatus, today: string, tz: string, now: Date): Goal[] {
   const order = status === 'done' ? 'done_at DESC, id DESC' : 'created_at DESC, id DESC';
   const rows = db.prepare(`SELECT * FROM goals WHERE status = ? ORDER BY ${order}`).all(status) as GoalRow[];
-  const from = last14FromDay(today, tz);
-  return rows.map((row) => toGoal(db, row, today, tz, from));
+  return rows.map((row) => toGoal(db, row, today, tz, now));
 }
 
 export function insertGoal(
@@ -102,6 +87,11 @@ export function insertGoal(
  * when the goal does not exist.
  */
 export function updateGoal(db: DatabaseSync, id: number, edit: GoalEdit, now: Date): number | 'done' | null {
+  return transaction(db, () => applyGoalEdit(db, id, edit, now));
+}
+
+/** The body of `updateGoal`, run in one transaction so the history row and the goal move together. */
+function applyGoalEdit(db: DatabaseSync, id: number, edit: GoalEdit, now: Date): number | 'done' | null {
   const row = db.prepare('SELECT * FROM goals WHERE id = ?').get(id) as GoalRow | undefined;
   if (!row) return null;
   if (row.status === 'done' && (edit.deadline !== undefined || edit.plannedMinutes !== undefined)) return 'done';

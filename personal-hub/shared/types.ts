@@ -219,3 +219,10 @@ export type Goal = {
 
 /** `GET /api/goals/accuracy`: medians of actual ÷ planned. `count` is the done goals measured. */
 export type GoalAccuracy = { hours: number | null; dates: number | null; count: number };
+
+/** A real calendar day key (`YYYY-MM-DD`), refusing 2026-02-30 and other impossible days. */
+export function isDayKey(v: unknown): v is string {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
