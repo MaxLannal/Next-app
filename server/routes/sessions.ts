@@ -334,10 +334,11 @@ function rewriteTimes(
 ): void {
   const inBounds = (at: string) => at > startedAt && (endedAt === null || at < endedAt);
   const old = getEvents(db, id);
-  const kept = old.filter((e) => inBounds(e.at));
+  // The bounds are the start and the stop now; only the pauses and resumes between them carry over.
+  const kept = old.filter((e) => (e.type === 'pause' || e.type === 'resume') && inBounds(e.at));
 
   const out: SessionEvent[] = [{ type: 'start', at: startedAt }, ...kept];
-  if (endedAt !== null && !kept.some((e) => e.type === 'stop')) out.push({ type: 'stop', at: endedAt });
+  if (endedAt !== null) out.push({ type: 'stop', at: endedAt });
 
   // A paused session must still hold the pause that closed its last interval.
   let autoPausedAt = before.auto_paused_at;

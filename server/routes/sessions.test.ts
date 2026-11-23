@@ -206,6 +206,54 @@ it('an auto-paused session keeps its pause when times are edited', async () => {
   expect(patched.events.at(-1)).toEqual({ type: 'pause', at: '2026-11-22T15:20:00.000Z' });
 });
 
+it('moving the start earlier moves the start, never adds a second', async () => {
+  t.setNow('2026-11-23T05:49:00.000Z');
+  const s = await start();
+  t.setNow('2026-11-23T06:20:00.000Z');
+  await act(s.id, 'pause');
+  t.setNow('2026-11-23T07:00:00.000Z');
+  await act(s.id, 'resume');
+  t.setNow('2026-11-23T08:36:00.000Z');
+  await act(s.id, 'stop');
+
+  // A start typed twelve hours too early, then put back.
+  const early = await t.req('PATCH', `/api/sessions/${s.id}`, { startedAt: '2026-11-22T17:49:00.000Z' });
+  expect(((await early.json()) as FocusSession).events.filter((e) => e.type === 'start')).toEqual([
+    { type: 'start', at: '2026-11-22T17:49:00.000Z' },
+  ]);
+  const back = await t.req('PATCH', `/api/sessions/${s.id}`, { startedAt: '2026-11-23T05:49:00.000Z' });
+  const patched = (await back.json()) as FocusSession;
+  expect(patched.events).toEqual([
+    { type: 'start', at: '2026-11-23T05:49:00.000Z' },
+    { type: 'pause', at: '2026-11-23T06:20:00.000Z' },
+    { type: 'resume', at: '2026-11-23T07:00:00.000Z' },
+    { type: 'stop', at: '2026-11-23T08:36:00.000Z' },
+  ]);
+  expect(patched.focusSeconds).toBe((31 + 96) * 60);
+});
+
+it('moving the end later moves the stop with it', async () => {
+  t.setNow('2026-11-22T15:00:00.000Z');
+  const s = await start();
+  t.setNow('2026-11-22T15:30:00.000Z');
+  await act(s.id, 'pause');
+  t.setNow('2026-11-22T15:40:00.000Z');
+  await act(s.id, 'resume');
+  t.setNow('2026-11-22T16:00:00.000Z');
+  await act(s.id, 'stop');
+
+  const res = await t.req('PATCH', `/api/sessions/${s.id}`, { endedAt: '2026-11-22T16:20:00.000Z' });
+  const patched = (await res.json()) as FocusSession;
+  expect(patched.endedAt).toBe('2026-11-22T16:20:00.000Z');
+  expect(patched.events).toEqual([
+    { type: 'start', at: '2026-11-22T15:00:00.000Z' },
+    { type: 'pause', at: '2026-11-22T15:30:00.000Z' },
+    { type: 'resume', at: '2026-11-22T15:40:00.000Z' },
+    { type: 'stop', at: '2026-11-22T16:20:00.000Z' },
+  ]);
+  expect(patched.focusSeconds).toBe(70 * 60);
+});
+
 it('end before start is refused', async () => {
   t.setNow('2026-11-22T15:00:00.000Z');
   const s = await start();

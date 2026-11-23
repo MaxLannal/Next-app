@@ -3,9 +3,10 @@ import type { Attachment, FocusSession } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
 import { LatexView } from '../../../components/LatexView.tsx';
 import { Sheet } from '../../../components/ui/Sheet.tsx';
-import { formatClock, formatDuration, formatShortDate, instantAt, localDay, timeValue } from '../../../lib/format.ts';
+import { formatClock, formatDuration, formatShortDate, timeValue } from '../../../lib/format.ts';
 import { CameraCapture } from './CameraCapture.tsx';
 import { FileDrop } from './FileDrop.tsx';
+import { endAfter, startBefore } from './sessionTimes.ts';
 import { latexChild, useEditReading, useRetryReading, useSessionAttachments, useUpload } from './useAttachments.ts';
 import './focus.css';
 
@@ -82,18 +83,15 @@ function WrapUpBody({ session: first, onClose, onSaved }: Omit<WrapUpSheetProps,
     void patch({ notes });
   };
 
+  // A time is typed without a day: a start is the last such time before the end (or now), an end
+  // the first after the start. So 23:00 to 02:00 runs over midnight, and they can't cross.
   const saveTimes = (which: 'start' | 'end') => {
-    const day = localDay(which === 'start' ? session.startedAt : (session.endedAt ?? new Date().toISOString()));
-    const at = instantAt(day, which === 'start' ? start : end);
-    const other = which === 'start' ? session.endedAt : session.startedAt;
-    const outOfOrder =
-      other !== null && (which === 'start' ? at !== null && at.getTime() >= Date.parse(other) : at !== null && at.getTime() <= Date.parse(other));
+    const typed = which === 'start' ? start : end;
+    const saved = which === 'start' ? session.startedAt : session.endedAt;
+    if (saved !== null && typed === timeValue(saved)) return;
+    const at = which === 'start' ? startBefore(typed, new Date(session.endedAt ?? Date.now())) : endAfter(typed, new Date(session.startedAt));
     if (at === null) {
       setError('That isn’t a time');
-      return;
-    }
-    if (outOfOrder) {
-      setError('End is before start');
       return;
     }
     void patch({ [which === 'start' ? 'startedAt' : 'endedAt']: at.toISOString() });
@@ -152,9 +150,13 @@ function WrapUpBody({ session: first, onClose, onSaved }: Omit<WrapUpSheetProps,
               className="wrap__input wrap__input--time"
               type="time"
               value={start}
+              aria-describedby={`${id}-start-day`}
               onChange={(e) => setStart(e.target.value)}
               onBlur={() => saveTimes('start')}
             />
+            <span id={`${id}-start-day`} className="wrap__day">
+              {formatShortDate(session.startedAt)}
+            </span>
           </div>
           {session.endedAt !== null && (
             <div className="wrap__field">
@@ -166,9 +168,13 @@ function WrapUpBody({ session: first, onClose, onSaved }: Omit<WrapUpSheetProps,
                 className="wrap__input wrap__input--time"
                 type="time"
                 value={end}
+                aria-describedby={`${id}-end-day`}
                 onChange={(e) => setEnd(e.target.value)}
                 onBlur={() => saveTimes('end')}
               />
+              <span id={`${id}-end-day`} className="wrap__day">
+                {formatShortDate(session.endedAt)}
+              </span>
             </div>
           )}
           <p className="wrap__focused">

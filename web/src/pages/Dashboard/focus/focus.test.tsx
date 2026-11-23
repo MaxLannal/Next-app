@@ -366,6 +366,42 @@ describe('WrapUpSheet', () => {
     expect(new Date(last.endedAt).getMinutes()).toBe(10);
   });
 
+  it('takes a session across midnight: an end the next morning, a start the night before', async () => {
+    // Local clock times, so the test holds in any zone.
+    const local = (day: number, hours: number, minutes = 0) => new Date(2026, 10, day, hours, minutes).toISOString();
+    let session: FocusSession = { ...running, id: 11, status: 'done', startedAt: local(22, 23), endedAt: local(22, 23, 30), focusSeconds: 1800 };
+    const patches: Record<string, string>[] = [];
+    stubHub({
+      'GET /api/attachments?sessionId=11': () => json([]),
+      'PATCH /api/sessions/11': (init) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, string>;
+        patches.push(body);
+        session = { ...session, ...body };
+        return json(session);
+      },
+    });
+    renderApp(<WrapUpSheet session={session} open onClose={() => {}} />);
+    const dayOf = (field: HTMLElement) => document.getElementById(field.getAttribute('aria-describedby') ?? '')?.textContent;
+
+    // Worked from 23:00 to 02:00: the end runs into the next morning.
+    const end = await screen.findByLabelText('End');
+    fireEvent.change(end, { target: { value: '02:00' } });
+    fireEvent.blur(end);
+    await waitFor(() => expect(patches.at(-1)).toEqual({ endedAt: local(23, 2) }));
+    await waitFor(() => expect(dayOf(end)).toBe('Mon 23 Nov'));
+
+    // A start typed after midnight stays that morning; typed before it, it goes back to the night before.
+    const start = screen.getByLabelText('Start');
+    fireEvent.change(start, { target: { value: '00:30' } });
+    fireEvent.blur(start);
+    await waitFor(() => expect(patches.at(-1)).toEqual({ startedAt: local(23, 0, 30) }));
+    fireEvent.change(start, { target: { value: '23:15' } });
+    fireEvent.blur(start);
+    await waitFor(() => expect(patches.at(-1)).toEqual({ startedAt: local(22, 23, 15) }));
+    await waitFor(() => expect(dayOf(start)).toBe('Sun 22 Nov'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('auto-paused notice', async () => {
     stubHub({ 'GET /api/attachments?sessionId=7': () => json([]) });
     const slept: FocusSession = {
