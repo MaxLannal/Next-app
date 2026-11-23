@@ -10,6 +10,7 @@ import { attachmentRoutes } from './routes/attachments.ts';
 import { searchRoutes } from './routes/search.ts';
 import { calendarRoutes } from './routes/calendar.ts';
 import { exerciseRoutes } from './routes/exercise.ts';
+import { essayImageRoutes, essayRoutes } from './routes/essays.ts';
 
 const WEB_DIST = fileURLToPath(new URL('../web/dist', import.meta.url));
 
@@ -25,6 +26,8 @@ export function createApp(ctx: AppContext): Hono {
   app.route('/api/search', searchRoutes(ctx));
   app.route('/api/calendar', calendarRoutes(ctx));
   app.route('/api/exercise', exerciseRoutes(ctx));
+  app.route('/api/essays', essayRoutes(ctx));
+  app.route('/api/essay-images', essayImageRoutes(ctx));
 
   app.use('*', webApp(WEB_DIST));
   return app;
