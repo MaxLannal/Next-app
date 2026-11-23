@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 const MIGRATIONS = [
   readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'), // v1: the hub
   readFileSync(new URL('./skills.sql', import.meta.url), 'utf8'), // v2: the skill tracker
+  readFileSync(new URL('./skills-v3.sql', import.meta.url), 'utf8'), // v3: completion dates, stage names, stage-relative y
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 

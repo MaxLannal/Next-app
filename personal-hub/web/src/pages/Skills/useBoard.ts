@@ -13,8 +13,8 @@ export function useBoard(skillId: number) {
   return useQuery({ queryKey: boardKey(skillId), queryFn: ({ signal }) => api<SkillBoard>(`/api/skills/${skillId}`, { signal }) });
 }
 
-type NodeInput = { kind: 'step' | 'experience'; title?: string; description?: string; sessionId?: number; layer: number; x: number; y: number };
-type NodeEdit = Partial<Pick<SkillNode, 'title' | 'description' | 'layer' | 'x' | 'y'>>;
+type NodeInput = { kind: 'step' | 'experience'; title?: string; description?: string; sessionId?: number; completedOn?: string; layer: number; x: number; y: number };
+type NodeEdit = Partial<Pick<SkillNode, 'title' | 'description' | 'layer' | 'x' | 'y' | 'completedOn'>>;
 
 /**
  * Every write to a board, each keeping the cached board in step with the hub and refreshing the
@@ -54,6 +54,17 @@ export function useBoardActions(skillId: number) {
       const link = await api<SkillLink>('/api/skills/links', { method: 'POST', json: { stepId, experienceId } });
       patchBoard((b) => (b.links.some((l) => l.id === link.id) ? b : { ...b, links: [...b.links, link] }));
       return link;
+    },
+    /** Names a stage; a blank name clears it. */
+    async nameStage(layer: number, name: string): Promise<void> {
+      patchBoard((b) => {
+        const stageNames = { ...b.skill.stageNames };
+        if (name.trim()) stageNames[layer] = name.trim();
+        else delete stageNames[layer];
+        return { ...b, skill: { ...b.skill, stageNames } };
+      });
+      await api<Skill>(`/api/skills/${skillId}/stages/${layer}`, { method: 'PUT', json: { name } });
+      void queryClient.invalidateQueries({ queryKey: SKILLS_KEY });
     },
     async unlink(id: number): Promise<void> {
       patchBoard((b) => ({ ...b, links: b.links.filter((l) => l.id !== id) }));

@@ -315,10 +315,15 @@ export type Skill = {
   stages: number;
   /** Steps in each stage, foundations first. */
   layerSteps: number[];
+  /** The names given to stages, by layer; a stage with no name is absent. */
+  stageNames: Record<number, string>;
 };
 
-/** The focus session an experience stands for, as the canvas shows it. */
-export type SkillSessionRef = { id: number; name: string; subject: string | null; focusSeconds: number; startedAt: string };
+/** A file from an experience's focus session, as the canvas draws it. */
+export type SkillFile = { id: number; filename: string; kind: AttachmentKind; mime: string; url: string };
+
+/** The focus session an experience stands for, as the canvas shows it, with the files from it. */
+export type SkillSessionRef = { id: number; name: string; subject: string | null; focusSeconds: number; startedAt: string; files: SkillFile[] };
 
 export type SkillNode = {
   id: number;
@@ -328,8 +333,11 @@ export type SkillNode = {
   description: string;
   /** 0 is the foundations; higher is harder work. */
   layer: number;
+  /** `y` is measured from the top of the node's stage; stages grow with what they hold. */
   x: number;
   y: number;
+  /** The day a step was completed, as a day key ("2026-11-23"); null for an experience. */
+  completedOn: string | null;
   /** An experience's session; null for a step, or when the session was deleted. */
   session: SkillSessionRef | null;
   createdAt: string;

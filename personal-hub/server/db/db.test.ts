@@ -109,10 +109,41 @@ describe('the v2 upgrade', () => {
 
       const db = openDb(file);
       const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
-      expect(user_version).toBe(2);
+      expect(user_version).toBe(SCHEMA_VERSION);
       const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name);
       expect(tables).toEqual(expect.arrayContaining(['skills', 'skill_nodes', 'skill_links']));
       expect((db.prepare('SELECT title FROM goals').get() as { title: string }).title).toBe('Keep me');
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('the v3 upgrade', () => {
+  it('dates existing steps, keeps their place within their stage, and adds stage names', async () => {
+    const { mkdtempSync, rmSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { DatabaseSync } = await import('node:sqlite');
+    const dir = mkdtempSync(join(tmpdir(), 'hub-v2-'));
+    const file = join(dir, 'hub.db');
+    try {
+      const v2 = new DatabaseSync(file);
+      v2.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+      v2.exec(readFileSync(new URL('./skills.sql', import.meta.url), 'utf8'));
+      v2.exec('PRAGMA user_version = 2');
+      v2.exec("INSERT INTO skills (name, created_at, updated_at) VALUES ('Quantum', '2026-11-22T18:00:00.000Z', '2026-11-22T18:00:00.000Z')");
+      // A step 60 below the top of stage 2, as v2 stored it: stage 2's top was at y = -600.
+      v2.exec("INSERT INTO skill_nodes (skill_id, kind, layer, x, y, created_at) VALUES (1, 'step', 1, 0, -540, '2026-11-22T18:00:00.000Z')");
+      v2.close();
+
+      const db = openDb(file);
+      const row = db.prepare('SELECT y, completed_on FROM skill_nodes').get() as { y: number; completed_on: string };
+      expect(row.y).toBe(60);
+      expect(row.completed_on).toMatch(/^2026-11-2[23]$/);
+      const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name);
+      expect(tables).toContain('skill_stages');
       db.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

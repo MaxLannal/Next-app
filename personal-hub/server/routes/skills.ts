@@ -11,6 +11,7 @@ import {
   getBoard,
   linkNodes,
   listSkills,
+  nameStage,
   renameSkill,
   SkillInputError,
   unlink,
@@ -75,6 +76,16 @@ export function skillRoutes(ctx: AppContext): Hono {
     }
   });
   routes.delete('/:id{[0-9]+}', (c) => (deleteSkill(ctx.db, id(c)) ? c.body(null, 204) : c.json({ error: 'No such skill' }, 404)));
+  routes.put('/:id{[0-9]+}/stages/:layer{[0-9]+}', async (c) => {
+    const body = await jsonBody(c);
+    try {
+      const skill = nameStage(ctx.db, id(c), Number(c.req.param('layer')), body.name, ctx.now());
+      return skill ? c.json(skill) : c.json({ error: 'No such skill' }, 404);
+    } catch (err) {
+      if (err instanceof SkillInputError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  });
   routes.post('/:id{[0-9]+}/nodes', async (c) => {
     const body = await jsonBody(c);
     return guarded(c, () => createNode(ctx.db, id(c), body, ctx.now()), 201);

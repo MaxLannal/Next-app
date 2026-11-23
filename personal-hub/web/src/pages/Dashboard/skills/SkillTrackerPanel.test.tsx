@@ -6,7 +6,7 @@ import type { Skill } from '@shared/types.ts';
 import { SkillTrackerPanel } from './SkillTrackerPanel.tsx';
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
-const skill: Skill = { id: 4, name: 'Quantum Computing', createdAt: '', updatedAt: '', steps: 3, experiences: 5, stages: 3, layerSteps: [2, 1] };
+const skill: Skill = { id: 4, name: 'Quantum Computing', createdAt: '', updatedAt: '', steps: 3, experiences: 5, stages: 3, layerSteps: [2, 1], stageNames: {} };
 
 function renderWith(skills: Skill[]) {
   vi.stubGlobal('fetch', vi.fn(async () => json(skills)));

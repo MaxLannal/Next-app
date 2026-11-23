@@ -45,8 +45,8 @@ describe('skills', () => {
     expect(board.skill).toMatchObject({ steps: 1, stages: 2, layerSteps: [1] });
     const step = board.nodes[0];
     // Dragged up a stage: now stage 2 is used and a third, empty one waits on top.
-    const moved = await t.req('PATCH', `/api/skills/nodes/${step.id}`, { layer: 1, y: -400 });
-    expect(await json<SkillNode>(moved)).toMatchObject({ layer: 1, y: -400, title: 'Qubits' });
+    const moved = await t.req('PATCH', `/api/skills/nodes/${step.id}`, { layer: 1, y: 60 });
+    expect(await json<SkillNode>(moved)).toMatchObject({ layer: 1, y: 60, title: 'Qubits' });
     board = await json<SkillBoard>(await t.req('GET', `/api/skills/${s.id}`));
     expect(board.skill).toMatchObject({ stages: 3, layerSteps: [0, 1] });
   });
@@ -96,5 +96,54 @@ describe('skills', () => {
     expect((await t.req('DELETE', `/api/skills/${s.id}`)).status).toBe(204);
     expect((await t.req('GET', `/api/skills/${s.id}`)).status).toBe(404);
     expect((t.db.prepare('SELECT COUNT(*) AS n FROM skill_nodes').get() as { n: number }).n).toBe(0);
+  });
+
+  it('dates a step the day it is made, or the day given, and lets the day change', async () => {
+    const s = await skill();
+    const today = await json<SkillNode>(await post(`/api/skills/${s.id}/nodes`, { kind: 'step' }));
+    expect(today.completedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const given = await json<SkillNode>(await post(`/api/skills/${s.id}/nodes`, { kind: 'step', completedOn: '2026-11-20' }));
+    expect(given.completedOn).toBe('2026-11-20');
+    const moved = await json<SkillNode>(await t.req('PATCH', `/api/skills/nodes/${given.id}`, { completedOn: '2026-10-01' }));
+    expect(moved.completedOn).toBe('2026-10-01');
+    expect((await t.req('PATCH', `/api/skills/nodes/${given.id}`, { completedOn: 'yesterday' })).status).toBe(400);
+    const exp = await json<SkillNode>(await post(`/api/skills/${s.id}/nodes`, { kind: 'experience', sessionId: session(), completedOn: '2026-11-20' }));
+    expect(exp.completedOn).toBeNull();
+  });
+
+  it('names stages only when asked, and a blank name clears one', async () => {
+    const s = await skill();
+    expect(s.stageNames).toEqual({});
+    const named = await json<Skill>(await t.req('PUT', `/api/skills/${s.id}/stages/0`, { name: '  Foundations ' }));
+    expect(named.stageNames).toEqual({ 0: 'Foundations' });
+    await t.req('PUT', `/api/skills/${s.id}/stages/1`, { name: 'Circuits' });
+    const board = await json<SkillBoard>(await t.req('GET', `/api/skills/${s.id}`));
+    expect(board.skill.stageNames).toEqual({ 0: 'Foundations', 1: 'Circuits' });
+    const cleared = await json<Skill>(await t.req('PUT', `/api/skills/${s.id}/stages/0`, { name: '' }));
+    expect(cleared.stageNames).toEqual({ 1: 'Circuits' });
+    expect((await t.req('PUT', `/api/skills/${s.id}/stages/0`, { name: 'x'.repeat(61) })).status).toBe(400);
+    expect((await t.req('PUT', '/api/skills/999/stages/0', { name: 'Nope' })).status).toBe(404);
+  });
+
+  it('shows an experience with the top-level files from its session', async () => {
+    const s = await skill();
+    const sid = session();
+    const add = (filename: string, kind: string, mime: string, parent: number | null = null) =>
+      Number(
+        t.db
+          .prepare(
+            `INSERT INTO attachments (session_id, parent_id, kind, filename, mime, size, path, sha256, created_at)
+             VALUES (?, ?, ?, ?, ?, 1, 'x', 'x', '2026-11-20T15:00:00.000Z')`,
+          )
+          .run(sid, parent, kind, filename, mime).lastInsertRowid,
+      );
+    const pdf = add('notes.pdf', 'pdf', 'application/pdf');
+    add('page-1.png', 'image', 'image/png', pdf);
+    add('bell.py', 'code', 'text/x-python');
+    const exp = await json<SkillNode>(await post(`/api/skills/${s.id}/nodes`, { kind: 'experience', sessionId: sid }));
+    expect(exp.session?.files.map((f) => f.filename)).toEqual(['notes.pdf', 'bell.py']);
+    expect(exp.session?.files[0]).toMatchObject({ kind: 'pdf', url: `/api/attachments/${pdf}/file` });
+    const board = await json<SkillBoard>(await t.req('GET', `/api/skills/${s.id}`));
+    expect(board.nodes[0].session?.files).toHaveLength(2);
   });
 });

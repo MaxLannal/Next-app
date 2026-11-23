@@ -37,12 +37,19 @@
 .canvas__world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 .canvas__state { flex: 1; margin: 0; padding: var(--space-xl); color: var(--color-muted); }
 
-.stage { position: absolute; box-sizing: border-box; border-top: 1px dashed color-mix(in oklab, var(--color-light) 12%, transparent); background: linear-gradient(to bottom, color-mix(in oklab, var(--color-light) 2.5%, transparent), transparent 60%); transition: background-color var(--dur-short) var(--ease-out); }
-.stage:first-child { border-bottom: 1px solid color-mix(in oklab, var(--color-light) 14%, transparent); }
-.stage.is-open { background: none; border-top-style: dashed; border-top-color: color-mix(in oklab, var(--color-accent) 30%, transparent); }
+.stage { position: absolute; box-sizing: border-box; background: linear-gradient(to bottom, color-mix(in oklab, var(--color-light) 2.5%, transparent), transparent 60%); transition: background-color var(--dur-short) var(--ease-out), height var(--dur-short) var(--ease-out), top var(--dur-short) var(--ease-out); }
+/* The only lines are the ones between stages: each stage's top edge, except the open one on top. */
+.stage:not(.is-open) { border-top: 1px dashed color-mix(in oklab, var(--color-light) 14%, transparent); }
+.stage.is-open { background: none; }
 .stage.is-target { background-color: color-mix(in oklab, var(--color-accent) 7%, transparent); }
-.stage__label { position: absolute; left: var(--space-lg); z-index: 1; color: color-mix(in oklab, var(--color-ink) 46%, transparent); font: 500 13px/1 var(--font-body); white-space: nowrap; pointer-events: none; }
+.stage__label { position: absolute; left: var(--space-lg); z-index: 1; display: flex; align-items: baseline; gap: 8px; color: color-mix(in oklab, var(--color-ink) 46%, transparent); font: 500 13px/1 var(--font-body); white-space: nowrap; }
 .stage__label.is-open { color: color-mix(in oklab, var(--color-accent) 70%, transparent); }
+.stage__num { pointer-events: none; }
+.stage__name { min-width: 0; margin: -4px 0; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--color-ink-2); font: inherit; cursor: text; transition: background-color var(--dur-micro) var(--ease-out); }
+.stage__name::placeholder { color: color-mix(in oklab, var(--color-ink) 22%, transparent); }
+.stage__name:hover { background: color-mix(in oklab, var(--color-light) 5%, transparent); }
+.stage__name:focus { outline: none; background: color-mix(in oklab, var(--color-light) 8%, transparent); color: var(--color-ink); }
+.stage__name:not(:placeholder-shown) { color: color-mix(in oklab, var(--color-ink) 72%, transparent); }
 
 .canvas__links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .link { fill: none; stroke: var(--color-accent); stroke-width: 2; stroke-linecap: round; opacity: 0.85; filter: drop-shadow(0 0 4px color-mix(in oklab, var(--color-accent) 50%, transparent)); }
@@ -71,16 +78,38 @@
 .node.is-drop { box-shadow: inset 0 0 0 2px var(--color-accent), 0 0 0 6px color-mix(in oklab, var(--color-accent) 20%, transparent), 0 18px 36px -18px oklch(0% 0 0 / 0.9); }
 .node__kind { color: var(--color-muted); font: 500 11px/1 var(--font-body); letter-spacing: 0.06em; }
 .node--step .node__kind { color: color-mix(in oklab, var(--color-accent) 75%, var(--color-ink)); }
-.node__title { width: 100%; border: 0; padding: 2px 0; background: none; color: var(--color-ink); font: 500 16px/1.25 var(--font-display); letter-spacing: -0.005em; }
-.node__desc { flex: 1; width: 100%; min-height: 0; border: 0; padding: 0; background: none; color: var(--color-ink-2); font: 400 13px/1.45 var(--font-body); resize: none; }
+/* A step widens with its text (between the min and max widths set on it), then wraps and grows down. */
+.node--step { width: max-content; }
+.node__head { display: flex; align-items: baseline; gap: 8px; padding-right: 22px; }
+.node__date { position: relative; color: var(--color-muted); font: 400 11.5px/1 var(--font-body); cursor: pointer; white-space: nowrap; }
+.node__date::before { content: "·"; margin-right: 8px; color: color-mix(in oklab, var(--color-ink) 30%, transparent); }
+.node__date:hover { color: var(--color-ink); }
+.node__date input { position: absolute; inset: -4px; width: calc(100% + 8px); opacity: 0; cursor: pointer; color-scheme: dark; }
+/* Each field sits on a hidden copy of its own text, which sets the field's width and height. */
+.grow { display: grid; }
+.grow::after { content: attr(data-value) " "; visibility: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+.grow > textarea, .grow::after { grid-area: 1 / 1; min-width: 0; margin: 0; border: 0; padding: 0; font: inherit; letter-spacing: inherit; overflow-wrap: anywhere; }
+.grow > textarea { width: 100%; overflow: hidden; background: none; color: inherit; resize: none; }
+.grow--title { padding: 2px 0; color: var(--color-ink); font: 500 16px/1.25 var(--font-display); letter-spacing: -0.005em; }
+.grow--desc { color: var(--color-ink-2); font: 400 13px/1.45 var(--font-body); }
 .node__title::placeholder, .node__desc::placeholder { color: color-mix(in oklab, var(--color-ink) 35%, transparent); }
 .node__title:focus-visible, .node__desc:focus-visible { outline: none; }
 .node--step:focus-within { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 50%, transparent), 0 18px 36px -18px oklch(0% 0 0 / 0.9); }
-.node__count { color: var(--color-muted); font: 400 11.5px/1 var(--font-body); }
+.node__count { margin-top: 4px; color: var(--color-muted); font: 400 11.5px/1 var(--font-body); }
 .node--exp { padding: 10px 12px; border-radius: 12px; background: oklch(12% 0.016 268); }
 .node--exp.is-linked { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 14px 28px -16px oklch(0% 0 0 / 0.9); }
 .node__name { overflow: hidden; font: 500 14px/1.25 var(--font-body); text-overflow: ellipsis; white-space: nowrap; }
 .node__meta { overflow: hidden; color: var(--color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+/* An experience's files, each a small cartoon of its kind with its name beneath. */
+.node__files { display: flex; flex-wrap: wrap; gap: 8px 6px; margin-top: 8px; padding-top: 10px; box-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-light) 7%, transparent); }
+.file { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 46px; padding: 4px 0 2px; border-radius: 8px; color: var(--color-ink-2); text-decoration: none; cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), transform var(--dur-short) cubic-bezier(0.3, 1.4, 0.5, 1); }
+.file:hover { background: color-mix(in oklab, var(--color-light) 7%, transparent); transform: translateY(-2px); }
+.file:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.file__art { flex: none; filter: drop-shadow(0 2px 3px oklch(0% 0 0 / 0.45)); }
+.file[data-look="pdf"] .file__art { transform: rotate(-3deg); }
+.file__name { display: -webkit-box; max-width: 100%; overflow: hidden; font: 400 10px/1.2 var(--font-body); text-align: center; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.file--more { justify-content: center; height: 54px; color: var(--color-muted); font-size: 12px; cursor: default; }
+.file--more:hover { background: none; transform: none; }
 .node__x { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 50%; background: transparent; color: var(--color-muted); font-size: 16px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity var(--dur-micro) var(--ease-out), background-color var(--dur-micro); }
 .node:hover .node__x, .node__x:focus-visible { opacity: 1; }
 .node__x:hover { background: color-mix(in oklab, var(--color-light) 10%, transparent); color: var(--color-ink); }
