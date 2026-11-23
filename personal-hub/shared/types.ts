@@ -144,3 +144,44 @@ export type EssaySummary = {
 
 /** One essay, with its document. */
 export type Essay = EssaySummary & { contentJson: unknown };
+
+// --- Task 5 ---
+
+export type Subject = { id: number; name: string };
+
+/** `focusSeconds` is live for an open session and fixed once it is done. */
+export type FocusSession = {
+  id: number;
+  name: string;
+  subject: Subject | null;
+  tags: string[];
+  goalId: number | null;
+  notes: string;
+  status: 'running' | 'paused' | 'done';
+  startedAt: string;
+  endedAt: string | null;
+  focusSeconds: number;
+  autoPausedAt: string | null;
+  attachmentCount: number;
+  events: SessionEvent[];
+};
+
+/** `from` and `to` are day keys and `to` is exclusive. `kind`, `source` and `q` arrive with the Database page. */
+export type SessionFilters = {
+  from?: string;
+  to?: string;
+  subjectId?: number;
+  tag?: string;
+  goalId?: number;
+  kind?: AttachmentKind;
+  source?: 'upload' | 'github';
+  q?: string;
+  sort?: 'created' | 'subject' | 'duration';
+  limit?: number;
+};
+
+export type HeatmapStats = {
+  days: HeatmapDay[];
+  totals: { seconds: number; activeDays: number; longestStreak: number; currentStreak: number };
+  years: number[];
+};
