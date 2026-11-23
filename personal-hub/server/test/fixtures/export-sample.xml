@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE HealthData [
+<!-- HealthKit Export Version: 14 -->
+<!ELEMENT HealthData (ExportDate,Me,(Record|Correlation|Workout|ActivitySummary|ClinicalRecord)*)>
+]>
+<HealthData locale="en_US">
+ <ExportDate value="2026-11-22 10:00:00 -0600"/>
+ <Me HKCharacteristicTypeIdentifierDateOfBirth="2000-01-01" HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexNotSet" HKCharacteristicTypeIdentifierBloodType="HKBloodTypeNotSet" HKCharacteristicTypeIdentifierFitzpatrickSkinType="HKFitzpatrickSkinTypeNotSet"/>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="My Apple Watch" sourceVersion="11.2" device="&lt;&lt;HKDevice: 0x600003a1c000&gt;, name:Apple Watch, manufacturer:Apple Inc., model:Watch, hardware:Watch7,3, software:11.2&gt;" unit="min" creationDate="2026-11-22 07:12:40 -0600" startDate="2026-11-21 23:14:05 -0600" endDate="2026-11-22 00:40:00 -0600">
+  <MetadataEntry key="HKCategoryTypeIdentifierSleepAnalysis" value="HKCategoryValueSleepAnalysisInBed"/>
+  <MetadataEntry key="HKTimeZone" value="America/Chicago"/>
+  <Value value="HKCategoryValueSleepAnalysisInBed"/>
+ </Record>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="My Apple Watch" sourceVersion="11.2" device="&lt;&lt;HKDevice: 0x600003a1c000&gt;, name:Apple Watch, manufacturer:Apple Inc., model:Watch, hardware:Watch7,3, software:11.2&gt;" unit="min" creationDate="2026-11-22 07:12:40 -0600" startDate="2026-11-21 23:14:05 -0600" endDate="2026-11-22 00:40:00 -0600">
+  <MetadataEntry key="HKCategoryTypeIdentifierSleepAnalysis" value="HKCategoryValueSleepAnalysisAsleepCore"/>
+  <MetadataEntry key="HKTimeZone" value="America/Chicago"/>
+  <Value value="HKCategoryValueSleepAnalysisAsleepCore"/>
+ </Record>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="iPhone" sourceVersion="18.2" device="&lt;&lt;HKDevice: 0x600003a0e000&gt;, name:iPhone, manufacturer:Apple Inc., model:iPhone, hardware:iPhone16,1, software:18.2&gt;" unit="count" creationDate="2026-11-22 09:00:00 -0600" startDate="2026-11-22 08:00:00 -0600" endDate="2026-11-22 08:10:00 -0600">
+  <MetadataEntry key="HKTimeZone" value="America/Chicago"/>
+  <Value value="412"/>
+ </Record>
+</HealthData>

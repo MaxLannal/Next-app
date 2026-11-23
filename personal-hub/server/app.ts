@@ -8,13 +8,8 @@ import type { AppContext } from './context.ts';
 import { resourceRoutes } from './routes/resources.ts';
 import { attachmentRoutes } from './routes/attachments.ts';
 import { searchRoutes } from './routes/search.ts';
-import { calendarRoutes } from './routes/calendar.ts';
-import { exerciseRoutes } from './routes/exercise.ts';
-import { essayImageRoutes, essayRoutes } from './routes/essays.ts';
-import { githubRoutes } from './routes/github.ts';
-import { sessionRoutes } from './routes/sessions.ts';
-import { statsRoutes } from './routes/stats.ts';
 import { mediaRoutes } from './routes/media.ts';
+import { sleepIngestRoutes, sleepRoutes } from './routes/sleep.ts';
 
 const WEB_DIST = fileURLToPath(new URL('../web/dist', import.meta.url));
 
@@ -28,14 +23,9 @@ export function createApp(ctx: AppContext): Hono {
   app.route('/api/resources', resourceRoutes(ctx));
   app.route('/api/attachments', attachmentRoutes(ctx));
   app.route('/api/search', searchRoutes(ctx));
-  app.route('/api/calendar', calendarRoutes(ctx));
-  app.route('/api/exercise', exerciseRoutes(ctx));
-  app.route('/api/essays', essayRoutes(ctx));
-  app.route('/api/essay-images', essayImageRoutes(ctx));
-  app.route('/api', sessionRoutes(ctx));
-  app.route('/api/stats', statsRoutes(ctx));
-  app.route('/api/media', mediaRoutes(ctx));
   app.route('/api/github', githubRoutes(ctx));
+  app.route('/api/ingest', sleepIngestRoutes(ctx));
+  app.route('/api/sleep', sleepRoutes(ctx));
 
   app.use('*', webApp(WEB_DIST));
   return app;

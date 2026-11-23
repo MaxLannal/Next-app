@@ -1,0 +1,73 @@
+/* Sleep panel: last night's figures, its stages, and the strip of nights. Dusk rules hold:
+   sentence case, tabular figures on every number, periwinkle for sleep, apricot for a short or
+   missing night, and no motion of its own. */
+
+.sleep { gap: var(--space-lg); }
+.sleep__night {
+  display: grid;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent);
+}
+.sleep__when {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.sleep__clock {
+  color: var(--color-ink);
+  font: 500 var(--text-lg)/1.2 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.sleep__figures {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-lg);
+}
+.sleep__total {
+  font: 500 var(--text-2xl)/1 var(--font-display);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.sleep__score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  font-variant-numeric: tabular-nums;
+}
+.sleep__score b {
+  font: 500 var(--text-lg)/1 var(--font-display);
+}
+.sleep__score.is-short b {
+  color: var(--color-accent-2);
+}
+.sleep__source {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+/* The strip of nights. */
+.nights {
+  display: grid;
+  gap: var(--space-sm);
+}
+.nights__label {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+.nights__svg { max-width: 100%; height: auto; overflow: visible; }
+.nights__svg:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 4px; border-radius: 4px; }
+.nights__track { fill: color-mix(in oklab, var(--color-light) 7%, transparent); }
+.nights__bar { fill: var(--color-accent); }
+.nights__bar.is-selected { fill: var(--color-accent-hi); }
+.nights__missing { fill: color-mix(in oklab, var(--color-accent-2) 55%, transparent); }
+.nights__dot { fill: var(--color-accent-2); }
+.nights__hit { fill: transparent; cursor: pointer; }
+.nights__hit:hover { fill: color-mix(in oklab, var(--color-light) 5%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .nights__hit { transition: none; }
+}

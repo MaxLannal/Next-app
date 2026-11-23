@@ -189,3 +189,21 @@ export type HeatmapStats = {
 
 /** `GET /api/media/status`: ready, the helper lacks Accessibility, or it isn't built. */
 export type MediaStatus = 'ready' | 'no-accessibility' | 'missing';
+// --- Task 12 ---
+
+export type SleepStage = 'in_bed' | 'asleep' | 'awake' | 'core' | 'deep' | 'rem';
+
+/** One run of one stage. `asleep` is HealthKit's AsleepUnspecified; the Watch usually splits it into core/deep/rem. */
+export type SleepSample = { start: string; end: string; stage: SleepStage; source: string };
+
+/** One night, `night` being the local day it ended on. Seconds are whole and never overlap. */
+export type SleepNight = {
+  night: string;
+  bedtime: string;
+  wake: string;
+  inBedSeconds: number;
+  asleepSeconds: number;
+  stages: { awake: number; rem: number; core: number; deep: number; unspecified: number };
+  source: string;
+  score: number;
+};
