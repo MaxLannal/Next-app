@@ -44,6 +44,13 @@ afterEach(() => {
 });
 
 describe('SleepPanel', () => {
+  it('asks the hub for the strip and last night only, not a year', async () => {
+    const fetchMock = stubSleep({ nights: [], lastNight: null, lastSyncAt: null });
+    renderPanel();
+    await screen.findByText('Connect your iPhone');
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/^\/api\/sleep\?nights=15$/), expect.anything());
+  });
+
   it('asks for a calm connection until data arrives', async () => {
     stubSleep({ nights: [], lastNight: null, lastSyncAt: null });
     renderPanel();

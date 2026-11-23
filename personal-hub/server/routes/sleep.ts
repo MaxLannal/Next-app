@@ -42,9 +42,27 @@ export function allSamples(db: AppContext['db']): SleepSample[] {
   return db.prepare('SELECT start, end, stage, source FROM sleep_samples ORDER BY start, end').all() as SleepSample[];
 }
 
+/**
+ * Grouping every stored night costs a pass over the table, so the result is kept until new data
+ * lands. The newest sample's end identifies the stored set: samples are only ever added, and the
+ * night a sample belongs to ends at or after it, so a newer end always means new grouping.
+ */
+const nightCache = new WeakMap<AppContext['db'], { newest: string | null; timeZone: string; nights: SleepNight[] }>();
+
+/** The newest sample's end: the whole table's version as far as nights are concerned. */
+function newestSample(db: AppContext['db']): string | null {
+  return (db.prepare('SELECT MAX(end) AS at FROM sleep_samples').get() as { at: string | null }).at;
+}
+
 /** Nights from the stored samples, newest last. */
 export function nightsFrom(ctx: AppContext): SleepNight[] {
-  return groupNights(allSamples(ctx.db), ctx.timeZone(), TARGET_HOURS);
+  const newest = newestSample(ctx.db);
+  const timeZone = ctx.timeZone();
+  const cached = nightCache.get(ctx.db);
+  if (cached && cached.newest === newest && cached.timeZone === timeZone) return cached.nights;
+  const nights = groupNights(allSamples(ctx.db), timeZone, TARGET_HOURS);
+  nightCache.set(ctx.db, { newest, timeZone, nights });
+  return nights;
 }
 
 /** The first `apple_health_export/export.xml` inside a zip, streamed out by `yauzl`. */
@@ -146,7 +164,13 @@ export function sleepIngestRoutes(ctx: AppContext): Hono {
       if ('error' in upload) return c.json({ error: upload.error }, upload.status);
       const ext = extname(upload.name).toLowerCase();
       let stream: Readable;
-      if (ext === '.zip') stream = await openExportFromZip(upload.path);
+      if (ext === '.zip') {
+        try {
+          stream = await openExportFromZip(upload.path);
+        } catch (err) {
+          return c.json({ error: `Could not read the export: ${messageOf(err)}` }, 400);
+        }
+      }
       else if (ext === '.xml') stream = createReadStream(upload.path);
       else return c.json({ error: 'Send the export as .xml, or the .zip Health made' }, 400);
 
@@ -188,8 +212,7 @@ export function sleepRoutes(ctx: AppContext): Hono {
     const all = nightsFrom(ctx);
     const nights = all.slice(-count);
     const lastNight: SleepNight | null = all.at(-1) ?? null;
-    const last = ctx.db.prepare("SELECT MAX(end) AS at FROM sleep_samples").get() as { at: string | null };
-    return c.json({ nights, lastNight, lastSyncAt: last.at });
+    return c.json({ nights, lastNight, lastSyncAt: newestSample(ctx.db) });
   });
 
   return routes;

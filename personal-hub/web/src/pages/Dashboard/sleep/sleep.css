@@ -44,11 +44,6 @@
 .sleep__score.is-short b {
   color: var(--color-accent-2);
 }
-.sleep__merged {
-  font-size: var(--text-sm);
-  color: var(--color-muted);
-  font-variant-numeric: tabular-nums;
-}
 .sleep__source {
   font-size: var(--text-xs);
   color: var(--color-muted);

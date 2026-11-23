@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { crc32 } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SleepNight, SleepSample, SleepStage } from '../../shared/types.ts';
@@ -29,6 +30,56 @@ const FULL: [number, SleepStage][] = [
   [90, 'deep'],
   [120, 'rem'],
 ];
+
+/** A stored (uncompressed) zip of `files`, as Health's "Export All Health Data" makes one. */
+function zipOf(files: Record<string, Buffer>): Buffer {
+  const parts: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+  for (const [name, data] of Object.entries(files)) {
+    const nameBytes = Buffer.from(name);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6); // UTF-8 names
+    local.writeUInt16LE(0, 8); // stored
+    local.writeUInt32LE(0, 10);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    local.writeUInt16LE(0, 28);
+    parts.push(local, nameBytes, data);
+    const entry = Buffer.alloc(46);
+    entry.writeUInt32LE(0x02014b50, 0);
+    entry.writeUInt16LE(20, 4);
+    entry.writeUInt16LE(20, 6);
+    entry.writeUInt16LE(0x0800, 8);
+    entry.writeUInt16LE(0, 10);
+    entry.writeUInt32LE(0, 12);
+    entry.writeUInt32LE(crc, 16);
+    entry.writeUInt32LE(data.length, 20);
+    entry.writeUInt32LE(data.length, 24);
+    entry.writeUInt16LE(nameBytes.length, 28);
+    entry.writeUInt16LE(0, 30);
+    entry.writeUInt16LE(0, 32);
+    entry.writeUInt16LE(0, 34);
+    entry.writeUInt16LE(0, 36);
+    entry.writeUInt32LE(0, 38);
+    entry.writeUInt32LE(offset, 42);
+    central.push(entry, nameBytes);
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const dir = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(dir.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, dir, end]);
+}
 
 let t: TestContext;
 beforeEach(() => {
@@ -76,6 +127,32 @@ describe('POST /api/ingest/sleep', () => {
     expect(after.nights).toEqual(before.nights);
     expect(after.nights).toHaveLength(1);
     expect(after.nights[0].asleepSeconds).toBe(27000);
+  });
+
+  it('adds only the new samples when the next day re-sends an overlapping window', async () => {
+    // Day one: the 7-day window ending with the night of the 22nd.
+    const base = nightRuns('Watch', FULL);
+    await postSleep({ samples: base });
+    const before = await getSleep();
+    expect(before.nights).toHaveLength(1);
+
+    // Day two: the same window plus two samples for the next night, each starting where the last ends.
+    const nextNight = [
+      { start: '2026-11-23T04:00:00.000Z', end: '2026-11-23T09:00:00.000Z', stage: 'core' as SleepStage, source: 'Watch' },
+      { start: '2026-11-23T09:00:00.000Z', end: '2026-11-23T12:00:00.000Z', stage: 'deep' as SleepStage, source: 'Watch' },
+    ];
+    const res = await postSleep({ samples: [...base, ...nextNight] });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as IngestReply).inserted).toBe(2);
+
+    const after = await getSleep();
+    // The older night is untouched: no minutes were added twice.
+    expect(after.nights.find((n) => n.night === '2026-11-22')).toEqual(before.nights[0]);
+    // The new samples are one night of their own, ending on the 23rd.
+    const fresh = after.nights.find((n) => n.night === '2026-11-23');
+    expect(fresh?.asleepSeconds).toBe(8 * 3600);
+    expect(fresh?.stages.core).toBe(5 * 3600);
+    expect(fresh?.stages.deep).toBe(3 * 3600);
   });
 
   it('prefers the Watch source', async () => {
@@ -150,6 +227,15 @@ describe('POST /api/ingest/health-export', () => {
     expect(((await again.json()) as { inserted: number }).inserted).toBe(0);
   });
 
+  it('imports the export.xml inside the zip Health makes', async () => {
+    const zip = await zipOf({ 'apple_health_export/export.xml': Buffer.from(fixture) });
+    const res = await t.req('POST', '/api/ingest/health-export', form(zip, 'export.zip'));
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(((await res.json()) as { inserted: number }).inserted).toBe(2);
+    const noche = await t.req('POST', '/api/ingest/health-export', form(await zipOf({ 'readme.txt': Buffer.from('hi') }), 'other.zip'));
+    expect(noche.status).toBe(400);
+  });
+
   it('refuses a file that is not xml or zip', async () => {
     const res = await t.req('POST', '/api/ingest/health-export', form('hello', 'notes.txt'));
     expect(res.status).toBe(400);
@@ -183,7 +269,7 @@ describe('GET /api/sleep', () => {
     expect(body.lastSyncAt).not.toBeNull();
   });
 
-  it('rejects a bad nights value', async () => {
+  it('asks the hub for the strip and last night only, not a year', async () => {
     expect((await t.req('GET', '/api/sleep?nights=zero')).status).toBe(400);
     expect((await t.req('GET', '/api/sleep?nights=400')).status).toBe(400);
   });

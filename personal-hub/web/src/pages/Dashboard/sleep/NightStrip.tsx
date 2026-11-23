@@ -43,6 +43,9 @@ export function NightStrip({ nights, today, missingToday, days, onSelect, select
     const day = new Date(Date.parse(`${today}T00:00:00Z`) - (days - 1 - i) * 86_400_000).toISOString().slice(0, 10);
     return { day, night, missing: night === null && i === days - 1 && missingToday };
   });
+  // A selection from outside the strip (the latest night was yesterday, say) leans on the newest
+  // cell that is here, so the arrow keys always move from something visible.
+  const anchor = cells.some((c) => c.day === selected) ? selected : ([...cells].reverse().find((c) => c.night !== null)?.day ?? null);
   const max = Math.max(8 * 3600, ...nights.map((n) => n.asleepSeconds));
   const width = cells.length * (BAR + GAP) - GAP;
   const scale = (seconds: number) => Math.max(seconds > 0 ? 2 : 0, (seconds / max) * HEIGHT);
@@ -67,7 +70,7 @@ export function NightStrip({ nights, today, missingToday, days, onSelect, select
         tabIndex={0}
         aria-label={`Nights: ${cells.filter((c) => c.night).length} of ${days} recorded`}
         onKeyDown={(e) => {
-          const at = cells.findIndex((c) => c.day === selected);
+          const at = cells.findIndex((c) => c.day === anchor);
           if (e.key === 'ArrowRight') {
             e.preventDefault();
             move(Math.min(cells.length - 1, at + 1));
@@ -93,7 +96,7 @@ export function NightStrip({ nights, today, missingToday, days, onSelect, select
               <rect className="nights__track" x={x} y={12} width={BAR} height={HEIGHT} rx={BAR / 2} />
               {c.night && (
                 <rect
-                  className={selected === c.day ? 'nights__bar is-selected' : 'nights__bar'}
+                  className={anchor === c.day ? 'nights__bar is-selected' : 'nights__bar'}
                   x={x}
                   y={12 + HEIGHT - h}
                   width={BAR}

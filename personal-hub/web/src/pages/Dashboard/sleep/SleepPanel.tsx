@@ -13,14 +13,18 @@ type SleepReply = { nights: SleepNight[]; lastNight: SleepNight | null; lastSync
 
 const QUERY_KEY = ['sleep'];
 const STRIP_DAYS = 14;
-/** The strip shows 14 nights plus the one picked, so ask for a year and keep every pick reachable. */
-const ASKED_NIGHTS = 366;
+/**
+ * The strip's 14 nights plus a day's slack behind it: the latest night may be yesterday's, and a
+ * pick only ever comes from the strip. Nothing wider is asked for, since grouping is the hub's
+ * costliest read.
+ */
+const ASKED_NIGHTS = STRIP_DAYS + 1;
 
 /** The stages as one bar, on the periwinkle ramp; awake is muted, as the brief asks. */
 const STAGE_PARTS = [
-  { label: 'Deep', color: 'oklch(66% 0.10 274)' },
-  { label: 'Core', color: 'oklch(77% 0.10 274)' },
-  { label: 'REM', color: 'oklch(84% 0.085 274)' },
+  { label: 'Deep', color: 'var(--color-accent)' },
+  { label: 'Core', color: 'var(--color-accent-hi)' },
+  { label: 'REM', color: 'var(--color-accent-soft)' },
   { label: 'Awake', color: 'var(--color-muted)' },
 ] as const;
 
