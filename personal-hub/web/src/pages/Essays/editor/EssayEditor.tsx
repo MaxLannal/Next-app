@@ -109,7 +109,9 @@ type WorkspaceProps = {
 
 function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
   const [title, setTitle] = useState(essay.title);
-  const [base, setBase] = useState(essay.updatedAt);
+  // The version this editor's next save starts from: the essay's, or a restored version's.
+  const [startBase, setStartBase] = useState(essay.updatedAt);
+  const [essayEpoch, setEssayEpoch] = useState(0);
   const [find, setFind] = useState<'find' | 'replace' | null>(null);
   const [exporting, setExporting] = useState<ExportKind | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -119,8 +121,8 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
   const imageInput = useRef<HTMLInputElement>(null);
   const titleRef = useRef(title);
   titleRef.current = title;
-  const baseRef = useRef(base);
-  baseRef.current = base;
+  const startBaseRef = useRef(startBase);
+  startBaseRef.current = startBase;
 
   const editor = useEditor(
     {
@@ -132,20 +134,19 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
     [essay.id],
   );
 
+  // No `baseUpdatedAt` here: the hook owns the base and moves it with every save.
   const getPayload = useCallback(
     () => {
       const json = editor?.getJSON() ?? { ...EMPTY_DOC };
-      return {
-        title: titleRef.current,
-        contentJson: json,
-        plainText: plainTextOf(json),
-        baseUpdatedAt: baseRef.current,
-      };
+      return { title: titleRef.current, contentJson: json, plainText: plainTextOf(json) };
     },
     [editor],
   );
 
-  const autosave = useAutosave(essay.id, getPayload);
+  // Two functions, one per mount: the first payload carries the version to start from, and after
+  // the hook remounts over a restore the new one is what its first read sees.
+  const openingPayload = useCallback(() => ({ ...getPayload(), baseUpdatedAt: startBaseRef.current }), [getPayload]);
+  const autosave = useAutosave(essay.id, essayEpoch === 0 ? openingPayload : getPayload);
   const { notifyChange, flush } = autosave;
 
   // The shared backup, if one is newer than the essay: the offer to restore it.
@@ -164,7 +165,7 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
     };
   }, [editor, notifyChange]);
 
-  // ⌘F opens find, ⌘⌥F find and replace; ⌘S saves now.
+  // ⌘F opens find, ⌘⌥F find and replace; ⌘K links; ⌘S saves now.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -175,6 +176,9 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
       } else if (key === 's') {
         e.preventDefault();
         void autosave.flush();
+      } else if (key === 'k') {
+        e.preventDefault();
+        openLinkRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -185,8 +189,10 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
     if (!backup || !editor) return;
     editor.commands.setContent(documentOf(backup.payload.contentJson));
     setTitle(backup.payload.title);
-    setBase(backup.payload.baseUpdatedAt);
-    baseRef.current = backup.payload.baseUpdatedAt;
+    // The backup started from the version it was saved against; the hub's newest is read now.
+    const base = (backup.payload as { baseUpdatedAt?: string }).baseUpdatedAt ?? essay.updatedAt;
+    setStartBase(base);
+    setEssayEpoch((n) => n + 1);
     titleRef.current = backup.payload.title;
     clearBackup(essay.id);
     setBackup(null);
@@ -220,6 +226,18 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
       setExporting(null);
     }
   };
+
+  const openLinkRef = useRef<() => void>(() => {});
+  const openLink = () => {
+    if (!editor) return;
+    const previous = editor.getAttributes('link').href as string | undefined;
+    const href = window.prompt('Link address', previous ?? 'https://');
+    if (href === null) return;
+    if (href.trim() === '') editor.chain().focus().extendMarkRange('link').unsetLink().run();
+    else editor.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run();
+  };
+  // The shortcut listener outlives renders; it calls the latest.
+  openLinkRef.current = openLink;
 
   const insertImage = async (file: File) => {
     if (!editor) return;
@@ -258,13 +276,7 @@ function EssayWorkspace({ essay, onRestored }: WorkspaceProps) {
             onExport={(kind) => void runExport(kind)}
             onFindReplace={(mode) => setFind(mode)}
             onImage={() => imageInput.current?.click()}
-            onLink={() => {
-              const previous = editor.getAttributes('link').href as string | undefined;
-              const href = window.prompt('Link address', previous ?? 'https://');
-              if (href === null) return;
-              if (href.trim() === '') editor.chain().focus().extendMarkRange('link').unsetLink().run();
-              else editor.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run();
-            }}
+            onLink={openLink}
             onHistory={() => setHistory(true)}
           />
           {find !== null && <FindReplaceBar editor={editor} mode={find} onClose={() => setFind(null)} />}
@@ -348,7 +360,8 @@ function Status({ status, savedAt }: { status: 'saved' | 'saving' | 'retrying' |
   if (status === 'saving') return <span>Saving…</span>;
   if (status === 'retrying') return <span className="is-warn">Not saved — retrying</span>;
   if (status === 'conflict') return <span className="is-warn">Changed elsewhere</span>;
-  return <span>{savedAt === null ? 'Saved' : `Saved ${formatTime(savedAt)}`}</span>;
+  // Before anything has been saved there is no time to show, and "Saved" would be untrue.
+  return savedAt === null ? <span className="is-quiet">No changes yet</span> : <span>Saved {formatTime(savedAt)}</span>;
 }
 
 type HistoryProps = {

@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** What a save sends: the document, its derived text, and the version it was started from. */
-export type SavePayload = {
+/**
+ * What a save sends: the document, its derived text, and the version it was
+ * started from. `getPayload` leaves `baseUpdatedAt` out — the hook owns the base,
+ * so every save starts from the hub's newest version — and a backup keeps it.
+ */
+export type EssayPayload = {
   title: string;
   contentJson: unknown;
   plainText: string;
-  baseUpdatedAt: string;
 };
+export type SavePayload = EssayPayload & { baseUpdatedAt: string };
 
 /**
  * A save's outcome: the hub's new version, or the status it answered with.
@@ -52,7 +56,7 @@ export function backupTime(essayId: number): string | null {
 }
 
 /** A document kept after a failed save. */
-export type UnsavedBackup = { payload: SavePayload; at: string };
+export type UnsavedBackup = { payload: EssayPayload; at: string };
 
 /** The backup for this essay, if one was written and is shaped as it should be. */
 export function readBackup(essayId: number): UnsavedBackup | null {
@@ -76,7 +80,7 @@ export function clearBackup(essayId: number): void {
   }
 }
 
-function writeBackup(essayId: number, payload: SavePayload): void {
+function writeBackup(essayId: number, payload: EssayPayload): void {
   try {
     localStorage.setItem(backupKey(essayId), JSON.stringify({ payload, at: new Date().toISOString() }));
   } catch {
@@ -123,7 +127,7 @@ async function fetchEssay(essayId: number): Promise<ConflictVersion | null> {
  */
 export function useAutosave(
   essayId: number,
-  getPayload: () => SavePayload,
+  getPayload: () => EssayPayload,
   options: AutosaveOptions = {},
 ): AutosaveState {
   const debounceMs = options.debounceMs ?? 800;
@@ -135,17 +139,25 @@ export function useAutosave(
   // Refs: callbacks read these, so a stale render never sends an old base.
   const statusRef = useRef<AutosaveStatus>('saved');
   const base = useRef<string | null>(null);
-  const pending = useRef<SavePayload | null>(null);
+  const pending = useRef<EssayPayload | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryIndex = useRef(0);
   const inFlight = useRef(false);
-  const afterInFlight = useRef<SavePayload | null>(null);
+  const afterInFlight = useRef<EssayPayload | null>(null);
   // A change typed while a 409 was being answered: kept, and sent by `keepMine`.
-  const held = useRef<SavePayload | null>(null);
+  const held = useRef<EssayPayload | null>(null);
   const getPayloadRef = useRef(getPayload);
   getPayloadRef.current = getPayload;
   const opts = useRef(options);
   opts.current = options;
+
+  // The version this editor started from: a fresh `getPayload()` carries it once.
+  const seeded = useRef(false);
+  if (!seeded.current) {
+    seeded.current = true;
+    const first = getPayload() as Partial<SavePayload>;
+    if (typeof first.baseUpdatedAt === 'string') base.current = first.baseUpdatedAt;
+  }
 
   const setStatus = (next: AutosaveStatus) => {
     statusRef.current = next;
@@ -159,8 +171,10 @@ export function useAutosave(
     }
   };
 
+  const baseOf = (p: EssayPayload) => base.current ?? (p as Partial<SavePayload>).baseUpdatedAt ?? '';
+
   // Saves run one at a time. A change made during a save follows it.
-  const save = useCallback(async (payload: SavePayload, retry?: SavePayload): Promise<void> => {
+  const save = useCallback(async (payload: EssayPayload, retry?: EssayPayload): Promise<void> => {
     if (inFlight.current) {
       // A change during a 409 is held until keepMine; other saves queue it behind this one.
       if (statusRef.current === 'conflict') held.current = payload;
@@ -172,8 +186,8 @@ export function useAutosave(
     const put = opts.current.save ?? ((p: SavePayload) => putEssay(essayId, p));
     let result: SaveResult;
     try {
-      // A retry re-sends the change that failed as it was, with the version it started from.
-      result = await put(retry ?? { ...payload, baseUpdatedAt: base.current ?? payload.baseUpdatedAt });
+      // The base is the hub's newest version: a retry re-sends the same document over it.
+      result = await put({ ...(retry ?? payload), baseUpdatedAt: baseOf(payload) });
     } catch {
       result = { ok: false, status: 0 };
     }
@@ -211,7 +225,7 @@ export function useAutosave(
       }, delay);
     }
     // The version the next save starts from: the hub's own, as its PUT answered it.
-    const hubVersion = result.ok ? result.updatedAt : conflictNow?.updatedAt ?? payload.baseUpdatedAt;
+    const hubVersion = result.ok ? result.updatedAt : conflictNow?.updatedAt ?? base.current ?? baseOf(payload);
     base.current = hubVersion;
 
     const next = afterInFlight.current;
@@ -229,12 +243,12 @@ export function useAutosave(
 
   /** Saves what is pending now — the last change or the one that failed — without waiting. */
   const flush = useCallback(async (): Promise<void> => {
+    const debouncing = timer.current !== null;
     clearTimer();
+    // Nothing typed, and no save waiting or failed: a blur or a tab switch has nothing to send.
+    if (pending.current === null && !debouncing) return;
     const payload = pending.current ?? getPayloadRef.current();
-    // Nothing changed since the last save, and nothing failed: there is nothing to send.
-    if (pending.current === null && base.current !== null && payload.baseUpdatedAt === base.current) return;
-    const retry = pending.current ?? undefined;
-    await save(payload, retry);
+    await save(payload, pending.current ?? undefined);
   }, [save]);
   const flushRef = useRef(flush);
   flushRef.current = flush;
@@ -255,9 +269,10 @@ export function useAutosave(
   }, [debounceMs, save]);
 
   const keepMine = useCallback(async (): Promise<void> => {
+    if (timer.current !== null) clearTimer();
     const mine = held.current ?? pending.current ?? getPayloadRef.current();
     held.current = null;
-    const version = conflict?.updatedAt ?? base.current ?? mine.baseUpdatedAt;
+    const version = conflict?.updatedAt ?? base.current ?? baseOf(mine);
     setConflict(null);
     const payload = { ...mine, baseUpdatedAt: version };
     pending.current = payload;
@@ -267,17 +282,20 @@ export function useAutosave(
 
   useEffect(() => {
     const onBlur = () => void flushRef.current();
+    // A tab switch is not a close: save the ordinary way, through the hook.
     const onVisibility = () => {
-      if (document.visibilityState !== 'hidden') return;
+      if (document.visibilityState === 'hidden') void flushRef.current();
+    };
+    // The page is going: one keepalive request, which the browser finishes anyway.
+    const onPageHide = () => {
       const payload = pending.current ?? getPayloadRef.current();
-      if (pending.current === null && base.current !== null && payload.baseUpdatedAt === base.current) return;
+      // Nothing typed is being dropped; and this fires once per unload.
       clearTimer();
-      // The page may be closing: keepalive lets the request finish anyway.
       try {
         void fetch(`/api/essays/${essayId}`, {
           method: 'PUT',
           headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, baseUpdatedAt: baseOf(payload) }),
           keepalive: true,
         });
       } catch {
@@ -286,11 +304,11 @@ export function useAutosave(
     };
     window.addEventListener('blur', onBlur);
     document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
     return () => {
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
       // Route change: what is unsaved goes now.
       void flushRef.current();
     };

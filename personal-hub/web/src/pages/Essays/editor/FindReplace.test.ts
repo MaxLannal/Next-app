@@ -73,6 +73,18 @@ describe('the FindReplace commands', () => {
     editor.destroy();
   });
 
+  it('steps to the previous match, wrapping to the last', () => {
+    const editor = live('the cat and the hat');
+    editor.commands.setSearch({ query: 'the' });
+    expect(editor.state.selection.from).toBe(1);
+    // From the first match, "previous" wraps to the last; again, it steps back one.
+    editor.commands.previousMatch();
+    expect(editor.state.selection.from).toBe(13);
+    editor.commands.previousMatch();
+    expect(editor.state.selection.from).toBe(1);
+    editor.destroy();
+  });
+
   it('steps to the next match, wrapping to the first', () => {
     const editor = live('the cat and the hat');
     editor.commands.setSearch({ query: 'the' });

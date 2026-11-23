@@ -290,6 +290,7 @@
   color: var(--color-muted);
 }
 .editor-status .is-warn { color: var(--color-accent-2); }
+.editor-status .is-quiet { color: var(--color-muted); }
 .editor-message { margin-top: var(--space-sm); font-size: var(--text-sm); color: var(--color-accent-2); }
 
 /* ── History sheet ──────────────────────────────────────────────────────── */

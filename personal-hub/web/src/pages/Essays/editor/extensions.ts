@@ -80,7 +80,6 @@ export function extensions(): Extensions {
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
       link: { openOnClick: false, autolink: true },
-      codeBlock: false,
     }),
     TextStyleKit.configure({ lineHeight: false }),
     Highlight.configure({ multicolor: true }),
@@ -90,7 +89,8 @@ export function extensions(): Extensions {
     TaskList,
     TaskItem.configure({ nested: true }),
     TableKit.configure({ table: { resizable: true } }),
-    Image.configure({ inline: false, allowBase64: true }),
+    // Uploads go through /api/essay-images; data URLs are not accepted into the document.
+    Image.configure({ inline: false, allowBase64: false }),
     // Pasted and dropped files go to the hub; URLs stay as they are.
     ImageUpload,
     Placeholder.configure({ placeholder: 'Start writing…' }),

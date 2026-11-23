@@ -78,7 +78,7 @@ export function FindReplaceBar({ editor, mode, onClose }: FindReplaceBarProps) {
       <span className="fr__count num" aria-live="polite">
         {query === '' ? '' : count === 0 ? 'None' : `${count}`}
       </span>
-      <button type="button" className="tb-btn" aria-label="Previous match" title="Previous match" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.commands.nextMatch()}>
+      <button type="button" className="tb-btn" aria-label="Previous match" title="Previous match" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.commands.previousMatch()}>
         <svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 5l4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
       </button>
       <button type="button" className="tb-btn" aria-label="Next match" title="Next match" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.commands.nextMatch()}>

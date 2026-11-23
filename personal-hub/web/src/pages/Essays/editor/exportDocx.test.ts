@@ -58,6 +58,36 @@ describe('toDocx', () => {
     expect(xml).toMatch(/<w:numPr>/);
   });
 
+  it('keeps a list inside a quote, items and numbering intact', async () => {
+    const xml = await documentXml(
+      await toDocx(
+        doc([
+          {
+            type: 'blockquote',
+            content: [
+              paragraph('Quoted words'),
+              { type: 'bulletList', content: [{ type: 'listItem', content: [paragraph('First point')] }] },
+            ],
+          },
+        ]),
+        '',
+      ),
+    );
+    expect(xml).toContain('Quoted words');
+    expect(xml).toContain('First point');
+    expect(xml).toMatch(/<w:numPr>/);
+    // The quoted paragraph sits one indent in.
+    expect(xml).toMatch(/<w:ind w:left="720"/);
+  });
+
+  it('writes a code block in Menlo', async () => {
+    const xml = await documentXml(
+      await toDocx(doc([{ type: 'codeBlock', content: [{ type: 'text', text: 'const x = 1;' }] }]), ''),
+    );
+    expect(xml).toContain('const x = 1;');
+    expect(xml).toContain('Menlo');
+  });
+
   it('writes math as its LaTeX source in Cambria Math', async () => {
     const xml = await documentXml(
       await toDocx(doc([paragraph('Euler '), { type: 'inlineMath', attrs: { latex: 'e^{i\\pi}+1=0' } }]), ''),

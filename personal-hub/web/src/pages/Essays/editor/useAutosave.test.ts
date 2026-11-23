@@ -1,16 +1,15 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAutosave, type SavePayload, type SaveResult } from './useAutosave.ts';
+import { useAutosave, type EssayPayload, type SavePayload, type SaveResult } from './useAutosave.ts';
 
 const ID = 7;
 const KEY = `hub:essay:${ID}:unsaved`;
 const BASE = '2026-11-22T18:00:00.000Z';
 
-const payload = (title: string): SavePayload => ({
+const payload = (title: string): EssayPayload => ({
   title,
   contentJson: { type: 'doc' },
   plainText: title,
-  baseUpdatedAt: BASE,
 });
 
 type Reply = { status: number; body: string };
@@ -41,8 +40,22 @@ const sent = (fetchMock: ReturnType<typeof stubFetch>) => {
   return { path, body: JSON.parse(init.body) as SavePayload, init };
 };
 
-const render = (getPayload = () => payload('Draft')) =>
-  renderHook(() => useAutosave(ID, getPayload, { save: put, debounceMs: 800 }));
+/** The page's shape: the first read carries the version to start from, the rest do not. */
+const render = (getPayload = () => payload('Draft')) => {
+  let first = true;
+  return renderHook(() =>
+    useAutosave(
+      ID,
+      () => {
+        const next = getPayload();
+        if (!first) return next;
+        first = false;
+        return { ...next, baseUpdatedAt: BASE };
+      },
+      { save: put, debounceMs: 800 },
+    ),
+  );
+};
 
 describe('useAutosave', () => {
   beforeEach(() => {
@@ -136,8 +149,67 @@ describe('useAutosave', () => {
     expect(mine.body.baseUpdatedAt).toBe('2026-11-22T18:05:00.000Z');
   });
 
-  it('flushes on blur and on page hide (keepalive), and on route change', async () => {
+  it('moves its base with every save: the second PUT carries the first save’s version, and no 409', async () => {
+    const first = reply(200, { updatedAt: '2026-11-22T18:00:01.000Z' });
+    const second = reply(200, { updatedAt: '2026-11-22T18:00:02.000Z' });
+    // A hub that only accepts the version it holds: any other answers 409.
+    let holding = BASE;
+    const fetchMock = vi.fn(async (_path: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as SavePayload;
+      if (body.baseUpdatedAt !== holding) {
+        return new Response(JSON.stringify({ error: 'Changed elsewhere', current: { id: ID, title: 'x', updatedAt: holding } }), { status: 409 });
+      }
+      holding = holding === BASE ? '2026-11-22T18:00:01.000Z' : '2026-11-22T18:00:02.000Z';
+      const next = holding === '2026-11-22T18:00:01.000Z' ? first : second;
+      return new Response(next.body, { status: next.status });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let typed = 'Draft one';
+    const { result } = render(() => payload(typed));
+    act(() => result.current.notifyChange());
+    await act(async () => vi.advanceTimersByTimeAsync(800));
+    expect(result.current.status).toBe('saved');
+
+    typed = 'Draft two';
+    act(() => result.current.notifyChange());
+    await act(async () => vi.advanceTimersByTimeAsync(800));
+    expect(result.current.status).toBe('saved');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)) as SavePayload);
+    expect(bodies[0]!.baseUpdatedAt).toBe(BASE);
+    expect(bodies[1]!.baseUpdatedAt).toBe('2026-11-22T18:00:01.000Z');
+    expect(bodies[1]!.title).toBe('Draft two');
+    expect(result.current.savedAt).toBe('2026-11-22T18:00:02.000Z');
+  });
+
+  it('a tab switch flushes an ordinary request, not a keepalive one', async () => {
     const fetchMock = stubFetch([ok, ok, ok]);
+    const { result } = render();
+    act(() => result.current.notifyChange());
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(0);
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0]![1] as RequestInit).keepalive).toBeUndefined();
+  });
+
+  it('page hide sends its one request with keepalive', async () => {
+    const fetchMock = stubFetch([ok]);
+    const { result } = render();
+    act(() => result.current.notifyChange());
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0]![1] as RequestInit).keepalive).toBe(true);
+  });
+
+  it('flushes on blur and on route change', async () => {
+    const fetchMock = stubFetch([ok, ok]);
     const { result, unmount } = render();
     act(() => result.current.notifyChange());
     await act(async () => {
@@ -147,18 +219,9 @@ describe('useAutosave', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     act(() => result.current.notifyChange());
     await act(async () => {
-      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
-      document.dispatchEvent(new Event('visibilitychange'));
-      await vi.advanceTimersByTimeAsync(0);
-      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect((fetchMock.mock.calls[1]![1] as RequestInit).keepalive).toBe(true);
-    act(() => result.current.notifyChange());
-    await act(async () => {
       unmount();
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

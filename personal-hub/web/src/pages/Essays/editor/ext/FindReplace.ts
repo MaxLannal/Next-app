@@ -57,6 +57,8 @@ declare module '@tiptap/core' {
       setSearch: (options: { query: string; caseSensitive?: boolean }) => ReturnType;
       /** Selects the next match after the selection, wrapping to the first. */
       nextMatch: () => ReturnType;
+      /** Selects the match before the selection, wrapping to the last. */
+      previousMatch: () => ReturnType;
       /** Replaces the current match with `text`, then selects the next. */
       replaceCurrent: (text: string) => ReturnType;
       /** Replaces every match with `text` in one undoable step. */
@@ -155,6 +157,20 @@ export const FindReplace = Extension.create({
           if (!search || matches.length === 0) return false;
           const after = matches.findIndex((m) => m.from >= state.selection.to);
           const active = after === -1 ? 0 : after;
+          tr.setSelection(TextSelection.create(state.doc, matches[active]!.from, matches[active]!.to));
+          tr.scrollIntoView();
+          tr.setMeta(META, { ...search, active });
+          return true;
+        },
+
+      previousMatch:
+        () =>
+        ({ tr, dispatch, state }) => {
+          const search = searchState(state);
+          const matches = matchesOf(state.doc, search);
+          if (!search || matches.length === 0) return false;
+          const before = matches.findLastIndex((m) => m.to <= state.selection.from);
+          const active = before === -1 ? matches.length - 1 : before;
           tr.setSelection(TextSelection.create(state.doc, matches[active]!.from, matches[active]!.to));
           tr.scrollIntoView();
           tr.setMeta(META, { ...search, active });

@@ -118,13 +118,13 @@ function listItemOf(item: JSONContent, ordered: boolean, level: number, task: bo
   return out;
 }
 
-function tableOf(node: JSONContent): Table {
+function tableOf(node: JSONContent, walk: Walk = {}): Table {
   const rows = (node.content ?? []).map((row) => {
     const cells = (row.content ?? []).map((cell) => {
       const header = cell.type === 'tableHeader';
       const paragraphs: Paragraph[] = [];
       for (const block of cell.content ?? []) {
-        if (block.type === 'paragraph') paragraphs.push(paragraphOf(block));
+        if (block.type === 'paragraph') paragraphs.push(quoted(paragraphOf(block), walk.indented === true));
         else paragraphs.push(new Paragraph({ children: inlineOf(block.content) }));
       }
       return new TableCell({
@@ -135,8 +135,16 @@ function tableOf(node: JSONContent): Table {
     });
     return new TableRow({ children: cells, tableHeader: row.content?.[0]?.type === 'tableHeader' });
   });
-  return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } });
+  return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE }, indent: walk.indented === true ? { size: 720, type: WidthType.DXA } : undefined });
 }
+
+/** A paragraph inside a quote sits one indent in: its own indent, or the quote's step. */
+const quoted = (p: Paragraph, indented: boolean): Paragraph => {
+  if (!indented) return p;
+  const own = p.options?.indent as { left?: number; right?: number; hanging?: number } | undefined;
+  return new Paragraph({ ...p.options, indent: { left: 720 + (own?.left ?? 0), right: own?.right, hanging: own?.hanging } });
+};
+
 
 type ImageBytes = { bytes: Uint8Array; type: 'png' | 'jpg' | 'gif' };
 
@@ -195,12 +203,14 @@ async function imageOf(node: JSONContent): Promise<Paragraph | null> {
   });
 }
 
+type Walk = { indented?: boolean };
+
 /** A block as Word paragraphs or a table. */
-async function blocksOf(node: JSONContent): Promise<(Paragraph | Table)[]> {
+async function blocksOf(node: JSONContent, walk: Walk = {}): Promise<(Paragraph | Table)[]> {
   const children = node.content ?? [];
   switch (node.type) {
     case 'paragraph':
-      return [paragraphOf(node)];
+      return [quoted(paragraphOf(node), walk.indented === true)];
     case 'heading': {
       const level = Number(node.attrs?.level ?? 1);
       const heading = HEADINGS[level - 1];
@@ -208,26 +218,26 @@ async function blocksOf(node: JSONContent): Promise<(Paragraph | Table)[]> {
         new Paragraph({
           heading,
           alignment: ALIGN[node.attrs?.textAlign as keyof typeof ALIGN],
+          indent: walk.indented === true ? { left: 720 } : undefined,
           children: inlineOf(children),
         }),
       ];
     }
     case 'blockquote': {
-      const inner: Paragraph[] = [];
-      for (const child of children) inner.push(...(await blocksOf(child)) as Paragraph[]);
-      return inner.map(
-        (p) =>
-          new Paragraph({
-            indent: { left: 720 },
-            spacing: { line: 360 },
-            children: p.options?.children as never,
-          }),
-      );
+      // The quote's blocks keep their own shape — a list inside it stays a list, a table a
+      // table — with a left indent on each paragraph; a list's numbering keeps its shape.
+      const inner: (Paragraph | Table)[] = [];
+      for (const child of children) inner.push(...(await blocksOf(child, { indented: true })));
+      return inner;
     }
     case 'codeBlock': {
       const lines = (children.find((c) => c.type === 'text')?.text ?? '').split('\n');
       return lines.map(
-        (line) => new Paragraph({ children: [new TextRun({ text: line, font: 'Menlo', size: 20 })] }),
+        (line) =>
+          new Paragraph({
+            indent: walk.indented === true ? { left: 720 } : undefined,
+            children: [new TextRun({ text: line, font: 'Menlo', size: 20 })],
+          }),
       );
     }
     case 'bulletList':
@@ -240,6 +250,7 @@ async function blocksOf(node: JSONContent): Promise<(Paragraph | Table)[]> {
     case 'inlineMath':
       return [
         new Paragraph({
+          indent: walk.indented === true ? { left: 720 } : undefined,
           children: [new TextRun({ text: String(node.attrs?.latex ?? ''), font: 'Cambria Math', italics: true })],
         }),
       ];
@@ -255,7 +266,7 @@ async function blocksOf(node: JSONContent): Promise<(Paragraph | Table)[]> {
         }),
       ];
     case 'table':
-      return [tableOf(node)];
+      return [tableOf(node, walk)];
     default: {
       const out: (Paragraph | Table)[] = [];
       for (const child of children) out.push(...(await blocksOf(child)));

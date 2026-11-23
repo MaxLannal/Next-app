@@ -359,7 +359,7 @@ export function Toolbar({ editor, onExport, onFindReplace, onImage, onLink, onHi
         </fieldset>
 
         <fieldset className="tb-group" aria-label="Insert">
-          <IconButton label="Link" keys="⌘K" pressed={editor.isActive('link')} onClick={onLink}>
+          <IconButton label="Link" keys={`${navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K'}`} pressed={editor.isActive('link')} onClick={onLink}>
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 11.5a3.5 3.5 0 005 0l2-2a3.5 3.5 0 00-5-5l-1 1M11.5 8.5a3.5 3.5 0 00-5 0l-2 2a3.5 3.5 0 005 5l1-1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
           </IconButton>
           <IconButton label="Image" onClick={onImage}>

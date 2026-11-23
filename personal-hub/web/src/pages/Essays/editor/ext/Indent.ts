@@ -99,14 +99,24 @@ export const Indent = Extension.create<IndentOptions>({
   },
 
   addKeyboardShortcuts() {
+    const inTable = () => {
+      const { state } = this.editor;
+      const $from = state.doc.resolve(state.selection.from);
+      for (let depth = $from.depth; depth > 0; depth -= 1) {
+        const name = $from.node(depth).type.name;
+        if (name === 'table' || name === 'tableRow' || name === 'tableCell' || name === 'tableHeader') return true;
+      }
+      return false;
+    };
     return {
       Tab: () => {
-        // Inside a list, Tab belongs to the list's own nesting.
         if (inList(this.editor.state.selection.from, this.editor.state.doc)) return false;
+        if (inTable()) return false;
         return this.editor.commands.indent();
       },
       'Shift-Tab': () => {
         if (inList(this.editor.state.selection.from, this.editor.state.doc)) return false;
+        if (inTable()) return false;
         return this.editor.commands.outdent();
       },
     };
