@@ -77,8 +77,12 @@ export function EssayEditor() {
     // The editor holds the document once it is open; a refetch would overwrite typing.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+    // But every opening reads the hub afresh: a copy cached from an earlier visit would show
+    // old text and start saves from an old version, which the hub refuses as changed elsewhere.
+    refetchOnMount: 'always',
   });
-  const essay = query.data;
+  // Only the copy read for this opening is edited.
+  const essay = query.isFetchedAfterMount ? query.data : undefined;
 
   if (!Number.isInteger(essayId) || essayId <= 0) {
     return (

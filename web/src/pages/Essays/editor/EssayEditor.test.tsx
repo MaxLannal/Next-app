@@ -30,8 +30,7 @@ function stubHub(put: (body: unknown) => Response = () => json({ updatedAt: '202
   return fetchMock;
 }
 
-function renderEditor() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderEditor(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/essays/4']}>
@@ -47,6 +46,25 @@ describe('EssayEditor', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     localStorage.clear();
+  });
+
+  it('reopening reads the hub afresh, not the copy cached from an earlier visit', async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubHub();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // What the cache held from the first visit: an empty draft, an older version.
+    client.setQueryData(['essay', 4], { ...essay, title: '', updatedAt: '2026-11-22T17:00:00.000Z', contentJson: { type: 'doc', content: [] } });
+    renderEditor(client);
+    expect(await screen.findByDisplayValue('On attention')).toBeTruthy();
+    expect(await screen.findByText('Attention is a practice.')).toBeTruthy();
+    // A save starts from the hub's version, so it isn't refused as changed elsewhere.
+    await user.type(screen.getByDisplayValue('On attention'), '!');
+    await waitFor(
+      () => expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')).toBe(true),
+      { timeout: 3000 },
+    );
+    const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')!;
+    expect(JSON.parse(String((put[1] as RequestInit).body)).baseUpdatedAt).toBe(essay.updatedAt);
   });
 
   it('opens the essay with its title and a Word-like toolbar', async () => {
