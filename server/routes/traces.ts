@@ -18,6 +18,39 @@ const PHOTO_TYPES: Record<string, string> = {
   '.heif': 'image/heif',
 };
 const MAX_PHOTOS_BYTES = 200 * 1024 * 1024;
+/** The longest side a converted photo keeps: sharp full screen, a fraction of an iPhone original's size. */
+const JPEG_MAX_PX = 2560;
+const isHeic = (mime: string) => mime === 'image/heic' || mime === 'image/heif';
+
+/**
+ * An iPhone's HEIC photo, made a JPEG beside it (Chrome can't show HEIC, and the original is
+ * large). Returns the JPEG's name, or null when the Mac couldn't convert it, leaving the original.
+ */
+async function heicToJpeg(ctx: AppContext, dir: string, file: string): Promise<string | null> {
+  const jpg = `${file.replace(/\.[^.]+$/, '')}.jpg`;
+  try {
+    await ctx.mac.convertImage(join(dir, file), join(dir, jpg), JPEG_MAX_PX);
+    return jpg;
+  } catch {
+    rmSync(join(dir, jpg), { force: true });
+    return null;
+  }
+}
+
+/** Converts the photos still kept as HEIC to JPEG, each under a new address; returns how many. */
+export async function convertStoredPhotos(ctx: AppContext): Promise<number> {
+  const dir = join(ctx.paths.filesDir, 'traces');
+  const rows = ctx.db.prepare("SELECT id, file FROM trace_photos WHERE mime IN ('image/heic', 'image/heif')").all() as { id: number; file: string }[];
+  let converted = 0;
+  for (const row of rows) {
+    const jpg = await heicToJpeg(ctx, dir, row.file);
+    if (jpg === null) continue;
+    ctx.db.prepare("UPDATE trace_photos SET file = ?, mime = 'image/jpeg' WHERE id = ?").run(jpg, row.id);
+    rmSync(join(dir, row.file), { force: true });
+    converted++;
+  }
+  return converted;
+}
 const ID = '/:id{[0-9]+}';
 
 type TraceRow = { id: number; lng: number; lat: number; city: string; country: string; day: string | null; notes: string; created_at: string };
@@ -80,10 +113,10 @@ export function traceRoutes(ctx: AppContext): Hono {
     day: row.day,
     notes: row.notes,
     createdAt: row.created_at,
-    photos: (ctx.db.prepare('SELECT id FROM trace_photos WHERE trace_id = ? ORDER BY id').all(row.id) as { id: number }[]).map((p) => ({
-      id: p.id,
-      url: `/api/traces/photos/${p.id}`,
-    })),
+    // The stored file names the version, so a photo converted later gets a new address and no cache serves the old one.
+    photos: (ctx.db.prepare('SELECT id, file FROM trace_photos WHERE trace_id = ? ORDER BY id').all(row.id) as { id: number; file: string }[]).map(
+      (p) => ({ id: p.id, url: `/api/traces/photos/${p.id}?v=${encodeURIComponent(p.file)}` }),
+    ),
     essays: ctx.db
       .prepare('SELECT e.id, e.title FROM trace_essays t JOIN essays e ON e.id = t.essay_id WHERE t.trace_id = ? ORDER BY e.updated_at DESC')
       .all(row.id) as { id: number; title: string }[],
@@ -179,11 +212,20 @@ export function traceRoutes(ctx: AppContext): Hono {
       mkdirSync(photoDir(), { recursive: true });
       for (const f of files) {
         const ext = extname(f.name).toLowerCase();
-        const file = `${id}-${randomBytes(8).toString('hex')}${ext}`;
+        let file = `${id}-${randomBytes(8).toString('hex')}${ext}`;
+        let mime = PHOTO_TYPES[ext]!;
         writeFileSync(join(photoDir(), file), Buffer.from(await f.arrayBuffer()));
+        if (isHeic(mime)) {
+          const jpg = await heicToJpeg(ctx, photoDir(), file);
+          if (jpg !== null) {
+            rmSync(join(photoDir(), file), { force: true });
+            file = jpg;
+            mime = 'image/jpeg';
+          }
+        }
         ctx.db
           .prepare('INSERT INTO trace_photos (trace_id, file, mime, created_at) VALUES (?, ?, ?, ?)')
-          .run(id, file, PHOTO_TYPES[ext]!, ctx.now().toISOString());
+          .run(id, file, mime, ctx.now().toISOString());
       }
       return c.json(find(id), 201);
     },

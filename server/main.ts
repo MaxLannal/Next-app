@@ -5,6 +5,7 @@ import { createConfigStore, hubTimeZone } from './config.ts';
 import { unavailableClaude, unavailableGit, unavailableMac, type AppContext } from './context.ts';
 import { openDb } from './db/index.ts';
 import { defaultDataDir, hubPaths } from './paths.ts';
+import { convertStoredPhotos } from './routes/traces.ts';
 import { createGitSync, hookAttachmentPushes } from './services/git-sync.ts';
 import { startHeartbeat } from './services/heartbeat.ts';
 import { createJobQueue } from './services/jobs.ts';
@@ -37,6 +38,8 @@ hookAttachmentPushes(ctx);
 
 // Runs once at boot, which catches a server that was down, then every minute.
 startHeartbeat(ctx);
+// Traces photos kept as HEIC before uploads were converted become JPEGs, in the background.
+void convertStoredPhotos(ctx).catch((err: unknown) => console.error('Converting stored photos failed', err));
 // Stays awake if Settings says so, and backs the database up at boot and every 24 hours.
 startRoutines(ctx);
 // Claude goes through the gateway setup has saved before boot (Setup runs first);
