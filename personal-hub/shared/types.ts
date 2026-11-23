@@ -185,3 +185,7 @@ export type HeatmapStats = {
   totals: { seconds: number; activeDays: number; longestStreak: number; currentStreak: number };
   years: number[];
 };
+// --- Task 15 ---
+
+/** `GET /api/media/status`: ready, the helper lacks Accessibility, or it isn't built. */
+export type MediaStatus = 'ready' | 'no-accessibility' | 'missing';
