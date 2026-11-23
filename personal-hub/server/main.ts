@@ -2,7 +2,7 @@ import { serve } from '@hono/node-server';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { createApp } from './app.ts';
 import { createConfigStore, hubTimeZone } from './config.ts';
-import { unavailableClaude, unavailableGit, type AppContext } from './context.ts';
+import { unavailableClaude, unavailableGit, unavailableMac, type AppContext } from './context.ts';
 import { openDb } from './db/index.ts';
 import { defaultDataDir, hubPaths } from './paths.ts';
 import { createGitSync, hookAttachmentPushes } from './services/git-sync.ts';
@@ -28,7 +28,8 @@ const ctx: AppContext = {
   remoteAddress: (c) => getConnInfo(c).remote.address ?? '',
   jobs: createJobQueue(),
   claude: unavailableClaude,
-  mac: createMacBridge(paths),
+  // HUB_NO_MAC=1 (the end-to-end tests) keeps Calendar, media keys and caffeinate out of it.
+  mac: process.env.HUB_NO_MAC === '1' ? unavailableMac : createMacBridge(paths),
   git: unavailableGit,
 };
 ctx.git = createGitSync(ctx);
