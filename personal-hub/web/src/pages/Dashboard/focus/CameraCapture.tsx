@@ -38,6 +38,7 @@ export function CameraCapture({ onPhoto, disabled = false }: CameraCaptureProps)
 
   const open = async () => {
     setProblem(null);
+    if (disabled) return;
     if (!canStream()) {
       fileInput.current?.click();
       return;
@@ -57,7 +58,7 @@ export function CameraCapture({ onPhoto, disabled = false }: CameraCaptureProps)
 
   const take = () => {
     const el = video.current;
-    if (!el || el.videoWidth === 0) return;
+    if (disabled || !el || el.videoWidth === 0) return;
     const canvas = document.createElement('canvas');
     canvas.width = el.videoWidth;
     canvas.height = el.videoHeight;
@@ -84,7 +85,7 @@ export function CameraCapture({ onPhoto, disabled = false }: CameraCaptureProps)
         aria-hidden="true"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) onPhoto(file);
+          if (file && !disabled) onPhoto(file);
           e.target.value = '';
         }}
       />
@@ -96,7 +97,7 @@ export function CameraCapture({ onPhoto, disabled = false }: CameraCaptureProps)
         <div className="capture__live">
           <video ref={video} className="capture__video" autoPlay playsInline muted aria-label="Camera preview" />
           <div className="capture__acts">
-            <button className="btn btn-sm" type="button" onClick={take}>
+            <button className="btn btn-sm" type="button" onClick={take} disabled={disabled}>
               Use this photo
             </button>
             <button className="btn btn-ghost btn-sm" type="button" onClick={stop}>

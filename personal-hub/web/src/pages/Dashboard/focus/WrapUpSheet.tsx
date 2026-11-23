@@ -3,7 +3,7 @@ import type { Attachment, FocusSession } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
 import { LatexView } from '../../../components/LatexView.tsx';
 import { Sheet } from '../../../components/ui/Sheet.tsx';
-import { formatClock, formatDuration, formatShortDate, formatTime } from '../../../lib/format.ts';
+import { formatClock, formatDuration, formatShortDate, instantAt, localDay, timeValue } from '../../../lib/format.ts';
 import { CameraCapture } from './CameraCapture.tsx';
 import { FileDrop } from './FileDrop.tsx';
 import { latexChild, useEditReading, useRetryReading, useSessionAttachments, useUpload } from './useAttachments.ts';
@@ -12,28 +12,6 @@ import './focus.css';
 /** Past this many focused seconds the end time probably caught a forgotten stop. */
 export const LONG_SESSION_SECONDS = 6 * 60 * 60;
 const LONG_LINE = 'Long session — check the end time';
-
-/* ── The time fields: a local `HH:mm` in, an instant out ────────────────── */
-
-const pad = (n: number) => String(n).padStart(2, '0');
-
-const localValue = (iso: string): string => {
-  const d = new Date(iso);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-
-/** The day of `dayKey` at `time`, in the browser's zone, as an instant. */
-function instantOf(dayKey: string, time: string): Date | null {
-  const [h, m] = time.split(':').map(Number);
-  if (!/^\d{2}:\d{2}$/.test(time) || !Number.isInteger(h) || !Number.isInteger(m) || h > 23 || m > 59) return null;
-  const [y, mo, d] = dayKey.split('-').map(Number);
-  return new Date(y!, mo! - 1, d!, h, m);
-}
-
-const localDay = (iso: string): string => {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
 
 const messageOf = (err: unknown, fallback: string) =>
   err instanceof ApiError && err.status !== 0 && err.message !== '' ? err.message : fallback;
@@ -62,8 +40,8 @@ function WrapUpBody({ session: first, onClose, onSaved }: Omit<WrapUpSheetProps,
   const [session, setSession] = useState(first);
   const [name, setName] = useState(first.name);
   const [notes, setNotes] = useState(first.notes);
-  const [start, setStart] = useState(localValue(first.startedAt));
-  const [end, setEnd] = useState(first.endedAt === null ? '' : localValue(first.endedAt));
+  const [start, setStart] = useState(timeValue(first.startedAt));
+  const [end, setEnd] = useState(first.endedAt === null ? '' : timeValue(first.endedAt));
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
@@ -106,7 +84,7 @@ function WrapUpBody({ session: first, onClose, onSaved }: Omit<WrapUpSheetProps,
 
   const saveTimes = (which: 'start' | 'end') => {
     const day = localDay(which === 'start' ? session.startedAt : (session.endedAt ?? new Date().toISOString()));
-    const at = instantOf(day, which === 'start' ? start : end);
+    const at = instantAt(day, which === 'start' ? start : end);
     const other = which === 'start' ? session.endedAt : session.startedAt;
     const outOfOrder =
       other !== null && (which === 'start' ? at !== null && at.getTime() >= Date.parse(other) : at !== null && at.getTime() <= Date.parse(other));
@@ -317,7 +295,15 @@ function WrapUpBody({ session: first, onClose, onSaved }: Omit<WrapUpSheetProps,
         )}
 
         <div className="wrap__foot">
-          <button className="btn" type="button" onClick={onClose}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              // A name or note still in a focused field saves before the sheet closes.
+              if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+              onClose();
+            }}
+          >
             Save
           </button>
           <span className="wrap__hint">Files save as they land; this closes the sheet.</span>

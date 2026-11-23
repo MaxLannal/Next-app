@@ -41,3 +41,26 @@ export function formatShortDate(dayKeyOrIso: string): string {
   const d = key ? new Date(Number(key[1]), Number(key[2]) - 1, Number(key[3])) : new Date(dayKeyOrIso);
   return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
+
+/** A local `"HH:mm"` from an instant: the value a `type="time"` field shows. */
+export function timeValue(iso: string): string {
+  const d = new Date(iso);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** The local day of an instant, as a day key (`YYYY-MM-DD`). */
+export function localDay(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** `time` (`"HH:mm"`) on `day` (a day key), as a local instant; null when it isn't a time. */
+export function instantAt(day: string, time: string): Date | null {
+  const clock = /^(\d{2}):(\d{2})$/.exec(time);
+  const key = DAY_KEY.exec(day);
+  if (!clock || !key) return null;
+  const hours = Number(clock[1]);
+  const minutes = Number(clock[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return new Date(Number(key[1]), Number(key[2]) - 1, Number(key[3]), hours, minutes);
+}

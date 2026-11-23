@@ -2,18 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import type { FocusSession } from '@shared/types.ts';
 import { api } from '../../../api.ts';
 import { EmptyState } from '../../../components/ui/EmptyState.tsx';
-import { formatDuration, formatShortDate, formatTime } from '../../../lib/format.ts';
+import { formatDuration, formatShortDate, formatTime, localDay } from '../../../lib/format.ts';
 import './focus.css';
 
 /** The panel's list length; the Database page keeps the rest. */
 const HISTORY_LIMIT = 7;
 const HISTORY_KEY = `/api/sessions?limit=${HISTORY_LIMIT}`;
-
-/** `YYYY-MM-DD` of an instant's local day. */
-function dayKey(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 type DayGroup = { day: string; total: number; sessions: FocusSession[] };
 
@@ -22,7 +16,7 @@ function byDay(sessions: FocusSession[]): DayGroup[] {
   const days = new Map<string, DayGroup>();
   for (const session of sessions) {
     if (session.status !== 'done') continue;
-    const key = dayKey(session.startedAt);
+    const key = localDay(session.startedAt);
     const group = days.get(key) ?? { day: key, total: 0, sessions: [] };
     group.total += session.focusSeconds;
     group.sessions.push(session);

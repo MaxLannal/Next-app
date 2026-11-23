@@ -1,12 +1,12 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import type { Subject } from '@shared/types.ts';
 import { ApiError } from '../../../api.ts';
-import type { SessionActions, SessionGoal } from './useSessions.ts';
+import type { OpenGoals, SessionActions } from './useSessions.ts';
 import './focus.css';
 
 type StartFormProps = {
   subjects: Subject[];
-  goals: SessionGoal[];
+  goals: OpenGoals;
   actions: SessionActions;
   /** A session is already open, so nothing can start. */
   busy: boolean;
@@ -141,7 +141,7 @@ export function StartForm({ subjects, goals, actions, busy }: StartFormProps) {
             <input
               id={`${id}-tags`}
               ref={tagsRef}
-              className="start__field start__field--ghost"
+              className="start__field start__field--ghost chip--faint"
               value={draft}
               onChange={(e) => {
                 const value = e.target.value;
@@ -167,7 +167,18 @@ export function StartForm({ subjects, goals, actions, busy }: StartFormProps) {
           </div>
         </div>
 
-        {goals.length > 0 && (
+        {goals.failed && (
+          <div className="start__cell">
+            <span className="start__label">Goal</span>
+            <p className="start__error" role="alert">
+              Couldn’t load goals —{' '}
+              <button className="focus__inline" type="button" onClick={goals.retry}>
+                retry
+              </button>
+            </p>
+          </div>
+        )}
+        {goals.goals.length > 0 && (
           <div className="start__cell">
             <label className="start__label" htmlFor={`${id}-goal`}>
               Goal
@@ -179,7 +190,7 @@ export function StartForm({ subjects, goals, actions, busy }: StartFormProps) {
               onChange={(e) => setGoal(e.target.value)}
             >
               <option value="">No goal</option>
-              {goals.map((g) => (
+              {goals.goals.map((g) => (
                 <option key={g.id} value={String(g.id)}>
                   {g.title}
                 </option>

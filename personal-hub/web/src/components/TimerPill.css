@@ -86,6 +86,9 @@
     box-shadow: var(--glass-hi), 0 12px 32px -12px color-mix(in oklab, var(--color-shade) 80%, transparent);
   }
   .nav__end .timer__where { max-width: none; flex: 1; }
+  /* The dashboard reserves the second row (see Dashboard.tsx), so the pill covers nothing. */
+  html[data-timer-row="1"] { scroll-padding-top: calc(var(--nav-h) + 56px); }
+  html[data-timer-row="1"] body { padding-top: 52px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

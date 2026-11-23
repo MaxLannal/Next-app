@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Attachment, FocusSession, Subject } from '@shared/types.ts';
 import { TimerPill } from '../../../components/TimerPill.tsx';
 import { FocusPanel } from './FocusPanel.tsx';
+import { useCurrentSession } from './useSessions.ts';
 import { WrapUpSheet } from './WrapUpSheet.tsx';
 
 const json = (body: unknown, status = 200) =>
@@ -84,28 +85,98 @@ describe('StartForm', () => {
   });
 });
 
-/** A page that ticks like a live one, handing its count to the pill. */
-function Timed({ start }: { start: FocusSession }) {
-  const [elapsed, setElapsed] = useState(start.focusSeconds);
-  useEffect(() => {
-    const timer = setInterval(() => setElapsed((n) => n + 1), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return <TimerPill session={start} elapsed={elapsed} onPause={() => {}} onResume={() => {}} onStop={() => {}} />;
+/** The panel's own wiring: the real `useCurrentSession` feeding the real pill. */
+function LiveTimer() {
+  const { session, elapsed } = useCurrentSession();
+  if (session === null) return null;
+  return <TimerPill session={session} elapsed={elapsed} onPause={() => {}} onResume={() => {}} onStop={() => {}} />;
+}
+
+/** Runs React Query's timers on vitest's fake clock. */
+function fakeClock() {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-22T18:00:00.000Z'));
+}
+
+/** Lets the fake clock run the fetch the hub answers at once, and the render with it. */
+async function settle() {
+  for (let i = 0; i < 5 && screen.queryByRole('timer') === null; i++) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+  }
 }
 
 describe('TimerPill', () => {
   it('timer pill counts', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-11-22T18:00:00.000Z'));
-    stubHub({});
-    renderApp(<Timed start={running} />);
-
+    fakeClock();
+    const reply: FocusSession = running;
+    const fetchMock = stubHub({ 'GET /api/sessions/current': () => json(reply) });
+    renderApp(<LiveTimer />);
+    await settle();
     expect(clockText()).toBe('00:01:05');
+
+    // One local second: the ticker, not the hub, moves the clock.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
     expect(clockText()).toBe('00:01:06');
+    expect(fetchMock.mock.calls.filter(([path]) => path === '/api/sessions/current').length).toBe(1);
+  });
+
+  it('a reply landing mid-second never takes the clock back', async () => {
+    fakeClock();
+    // The hub answers with the figure it had when the request left, a moment ago.
+    let reply: FocusSession = { ...running, focusSeconds: 70 };
+    stubHub({ 'GET /api/sessions/current': () => json(reply) });
+    renderApp(<LiveTimer />);
+    await settle();
+    expect(clockText()).toBe('00:01:10');
+
+    // The local tick carries the clock 4.5 s on without the hub.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+    expect(clockText()).toBe('00:01:14');
+
+    // The 5 s poll lands half a second later, still with the figure it sent with: it does not fall back.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(clockText()).toBe('00:01:15');
+
+    // A reply that has run past the local count moves the clock to it, less a second of slack.
+    reply = { ...running, focusSeconds: 76 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(clockText()).toBe('00:01:20');
+  });
+
+  it('a reply ahead of the local count is taken, not capped below it', async () => {
+    fakeClock();
+    const fetchMock = stubHub({ 'GET /api/sessions/current': () => json(running) });
+    renderApp(<LiveTimer />);
+    await settle();
+    // The heartbeat paused nothing and the Mac stayed awake: the hub runs ahead.
+    fetchMock.mockImplementation(async () => json({ ...running, focusSeconds: 80 }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(clockText()).toBe('00:01:20');
+  });
+
+  it('a paused session holds its figure', async () => {
+    fakeClock();
+    const paused: FocusSession = { ...running, status: 'paused', focusSeconds: 65 };
+    stubHub({ 'GET /api/sessions/current': () => json(paused) });
+    renderApp(<LiveTimer />);
+    await settle();
+    expect(clockText()).toBe('00:01:05');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(clockText()).toBe('00:01:05');
   });
 });
 
@@ -396,6 +467,32 @@ describe('FocusPanel goals', () => {
 
     await screen.findByRole('button', { name: 'Start' });
     await waitFor(() => expect(screen.queryByLabelText('Goal')).toBeNull());
+  });
+
+  it('shows the goal failure with Retry when the hub answers 500', async () => {
+    const user = userEvent.setup();
+    let answer = 500;
+    const fetchMock = stubHub({
+      'GET /api/sessions/current': () => json(null),
+      'GET /api/subjects': () => json([]),
+      'GET /api/goals?status=open': () =>
+        answer === 500 ? json({ error: 'The hub fell over' }, 500) : json([]),
+      'GET /api/sessions?limit=7': () => json([]),
+      'GET /api/stats/subjects?range=day': () => json([]),
+    });
+    renderApp(<FocusPanel />);
+
+    // Never silently hidden: the line says what failed, and offers the one step.
+    expect(await screen.findByText('Couldn’t load goals —', { exact: false })).toBeTruthy();
+    expect(screen.queryByLabelText('Goal')).toBeNull();
+
+    answer = 200;
+    const callsBefore = fetchMock.mock.calls.filter(([path]) => path === '/api/goals?status=open').length;
+    await user.click(screen.getByRole('button', { name: 'retry' }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([path]) => path === '/api/goals?status=open').length).toBe(callsBefore + 1),
+    );
+    await waitFor(() => expect(screen.queryByText('Couldn’t load goals —', { exact: false })).toBeNull());
   });
 
   it('lists open goals in the select and sends the chosen one', async () => {
