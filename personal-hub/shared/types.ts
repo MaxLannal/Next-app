@@ -95,3 +95,7 @@ export type SearchHit = {
   title: string;
   snippet: string;
 };
+// --- Task 4 ---
+
+/** One timer change. A session is stored as these events, so queued ones can be replayed later. */
+export type SessionEvent = { type: 'start' | 'pause' | 'resume' | 'stop'; at: string };
