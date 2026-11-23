@@ -99,3 +99,20 @@ export type SearchHit = {
 
 /** One timer change. A session is stored as these events, so queued ones can be replayed later. */
 export type SessionEvent = { type: 'start' | 'pause' | 'resume' | 'stop'; at: string };
+
+// --- Task 11 ---
+
+export type ExerciseKind = 'pushups' | 'squats';
+
+/** One kind's exercise numbers for a range: its buckets, their total and the daily average. */
+export type ExerciseSeries = {
+  buckets: { label: string; value: number }[];
+  total: number;
+  dailyAverage: number;
+};
+
+/** `GET /api/exercise`: today's counts, then a series per requested kind. */
+export type ExerciseReply = {
+  today: Record<ExerciseKind, number>;
+  series: Partial<Record<ExerciseKind, ExerciseSeries>>;
+};
