@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Attachment, FocusSession, Subject } from '@shared/types.ts';
 import { TimerPill } from '../../../components/TimerPill.tsx';
 import { FocusPanel } from './FocusPanel.tsx';
-import { useCurrentSession } from './useSessions.ts';
+import { anchorReply, focusElapsed, useCurrentSession } from './useSessions.ts';
 import { WrapUpSheet } from './WrapUpSheet.tsx';
 
 const json = (body: unknown, status = 200) =>
@@ -124,33 +124,108 @@ describe('TimerPill', () => {
     expect(fetchMock.mock.calls.filter(([path]) => path === '/api/sessions/current').length).toBe(1);
   });
 
-  it('a reply landing mid-second never takes the clock back', async () => {
+  it('a reply within a second of the count leaves the clock where it is', async () => {
     fakeClock();
-    // The hub answers with the figure it had when the request left, a moment ago.
     let reply: FocusSession = { ...running, focusSeconds: 70 };
     stubHub({ 'GET /api/sessions/current': () => json(reply) });
     renderApp(<LiveTimer />);
     await settle();
     expect(clockText()).toBe('00:01:10');
 
-    // The local tick carries the clock 4.5 s on without the hub.
+    // The 5 s poll says 74: the hub rounded and the reply took a moment. That is the same clock,
+    // so it neither steps back to 74 nor restarts its second.
+    reply = { ...running, focusSeconds: 74 };
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4500);
-    });
-    expect(clockText()).toBe('00:01:14');
-
-    // The 5 s poll lands half a second later, still with the figure it sent with: it does not fall back.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(5500);
     });
     expect(clockText()).toBe('00:01:15');
+  });
 
-    // A reply that has run past the local count moves the clock to it, less a second of slack.
-    reply = { ...running, focusSeconds: 76 };
+  it('a reply behind the count is taken: the time the Mac slept comes off', async () => {
+    fakeClock();
+    // Just after a wake the hub still counts the sleep, until its heartbeat pauses the session.
+    let reply: FocusSession = { ...running, focusSeconds: 3000 };
+    stubHub({ 'GET /api/sessions/current': () => json(reply) });
+    renderApp(<LiveTimer />);
+    await settle();
+    expect(clockText()).toBe('00:50:00');
+
+    // Polls land at 5 s, 10 s, …; each look comes half a second after one.
+    reply = { ...running, status: 'paused', autoPausedAt: '2026-11-22T17:40:00.000Z', focusSeconds: 2000 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5500);
+    });
+    expect(clockText()).toBe('00:33:20');
+
+    // Resumed: the clock runs on from the hub's figure, not from the one it showed before.
+    reply = { ...running, focusSeconds: 2000 };
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
-    expect(clockText()).toBe('00:01:20');
+    expect(clockText()).toBe('00:33:20');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(clockText()).toBe('00:33:21');
+  });
+
+  it('a new session starts from zero after a longer one', async () => {
+    fakeClock();
+    let reply: FocusSession | null = { ...running, focusSeconds: 3021 };
+    stubHub({ 'GET /api/sessions/current': () => json(reply) });
+    renderApp(<LiveTimer />);
+    await settle();
+    expect(clockText()).toBe('00:50:21');
+
+    reply = null;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5500);
+    });
+    expect(screen.queryByRole('timer')).toBeNull();
+
+    reply = { ...running, id: 8, focusSeconds: 0, events: [{ type: 'start', at: '2026-11-22T18:00:10.000Z' }] };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(clockText()).toBe('00:00:00');
+  });
+
+  it('two clocks mounted apart always agree', async () => {
+    fakeClock();
+    let reply: FocusSession = { ...running, focusSeconds: 3000 };
+    stubHub({ 'GET /api/sessions/current': () => json(reply) });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (both: boolean) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <LiveTimer />
+          {both && <LiveTimer />}
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    // The rail's clock is up from the start; it sees the overcount, the pause and the resume.
+    const { rerender } = render(tree(false));
+    await settle();
+    reply = { ...running, status: 'paused', autoPausedAt: '2026-11-22T17:40:00.000Z', focusSeconds: 2000 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5500);
+    });
+    reply = { ...running, focusSeconds: 2000 };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7300);
+    });
+
+    // The Focus panel's clock arrives later, mid-second.
+    rerender(tree(true));
+    const clocks = () => screen.getAllByRole('timer').map((t) => t.textContent);
+    expect(clocks()).toEqual(['00:33:22', '00:33:22']);
+    for (const step of [130, 870, 1700, 3300, 5000]) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(step);
+      });
+      const [rail, panel] = clocks();
+      expect(panel).toBe(rail);
+    }
   });
 
   it('a reply ahead of the local count is taken, not capped below it', async () => {
@@ -177,6 +252,37 @@ describe('TimerPill', () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
     expect(clockText()).toBe('00:01:05');
+  });
+});
+
+describe('anchorReply', () => {
+  const at = Date.parse('2026-11-22T18:00:00.000Z');
+
+  it('keeps the start while the hub agrees within the slack, and takes it otherwise', () => {
+    const first = anchorReply({ ...running, focusSeconds: 70 }, at, undefined);
+    expect(first.since).toBe(at - 70_000);
+    // 5 s on the hub says 74 (rounded, late): the same clock.
+    expect(anchorReply({ ...running, focusSeconds: 74 }, at + 5000, first).since).toBe(first.since);
+    // 5 s on the hub says 72: three seconds came off, so its figure is the clock.
+    expect(anchorReply({ ...running, focusSeconds: 72 }, at + 5000, first).since).toBe(at + 5000 - 72_000);
+  });
+
+  it('a different session or a resume starts its own clock', () => {
+    const first = anchorReply({ ...running, focusSeconds: 70 }, at, undefined);
+    const other = anchorReply({ ...running, id: 8, focusSeconds: 71 }, at + 1000, first);
+    expect(other.since).toBe(at + 1000 - 71_000);
+    const paused = anchorReply({ ...running, status: 'paused', focusSeconds: 70 }, at, undefined);
+    expect(anchorReply({ ...running, focusSeconds: 70 }, at + 500, paused).since).toBe(at + 500 - 70_000);
+  });
+
+  it('counts on while running, and holds the hub figure while paused', () => {
+    const live = anchorReply({ ...running, focusSeconds: 70 }, at, undefined);
+    expect(focusElapsed(live, at + 2999)).toBe(72);
+    // A tick read just before the reply landed never counts below the reply.
+    expect(focusElapsed(live, at - 200)).toBe(70);
+    const paused = anchorReply({ ...running, status: 'paused', focusSeconds: 70 }, at, undefined);
+    expect(focusElapsed(paused, at + 60_000)).toBe(70);
+    expect(focusElapsed(undefined, at)).toBe(0);
   });
 });
 

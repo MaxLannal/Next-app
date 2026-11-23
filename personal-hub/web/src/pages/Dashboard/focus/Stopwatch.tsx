@@ -61,10 +61,13 @@ export function Stopwatch({ session, elapsed, onPause, onResume, onStop }: Stopw
     [],
   );
 
-  if (shown === null) return null;
+  // While the session is open, draw the time handed in this render, the same figure as the rail's
+  // clock; the kept copy is only for the drain after it stops.
+  const view = session !== null ? { session, elapsed } : shown;
+  if (view === null) return null;
 
-  const current = shown.session;
-  const seconds = shown.elapsed;
+  const current = view.session;
+  const seconds = view.elapsed;
   const asleep = current.autoPausedAt !== null;
   const paused = asleep || current.status === 'paused';
   const where = current.subject?.name ?? current.name;
@@ -72,7 +75,8 @@ export function Stopwatch({ session, elapsed, onPause, onResume, onStop }: Stopw
   // The ring restarts each minute: a new key per lap, so it never sweeps backwards.
   const lap = Math.floor(seconds / 60);
   const offset = CIRCUMFERENCE * (1 - (seconds % 60) / 60);
-  const state = leaving ? 'leaving' : paused ? 'paused' : 'running';
+  const draining = leaving && session === null;
+  const state = draining ? 'leaving' : paused ? 'paused' : 'running';
 
   return (
     <div className="stopwatch" data-state={state} role="group" aria-label={`Focus: ${where}`}>
@@ -113,15 +117,15 @@ export function Stopwatch({ session, elapsed, onPause, onResume, onStop }: Stopw
       </div>
       <div className="stopwatch__keys">
         {paused ? (
-          <button className="stopwatch__key stopwatch__key--go" type="button" aria-label="Resume" onClick={onResume} disabled={leaving}>
+          <button className="stopwatch__key stopwatch__key--go" type="button" aria-label="Resume" onClick={onResume} disabled={draining}>
             <span aria-hidden="true">▶</span> Resume
           </button>
         ) : (
-          <button className="stopwatch__key" type="button" aria-label="Pause" onClick={onPause} disabled={leaving}>
+          <button className="stopwatch__key" type="button" aria-label="Pause" onClick={onPause} disabled={draining}>
             <span aria-hidden="true">‖</span> Pause
           </button>
         )}
-        <button className="stopwatch__key" type="button" aria-label="Stop" onClick={onStop} disabled={leaving}>
+        <button className="stopwatch__key" type="button" aria-label="Stop" onClick={onStop} disabled={draining}>
           <span aria-hidden="true">■</span> Stop
         </button>
       </div>

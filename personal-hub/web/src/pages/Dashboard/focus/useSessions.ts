@@ -1,49 +1,71 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
 import type { FocusSession, Subject } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
+import { useNow } from '../../../lib/useNow.ts';
 
 /** How often the hub is asked which session is open. */
 export const CURRENT_POLL_MS = 5000;
 
-/** The open session, re-read every 5 s, and its focus time ticked on locally every second. */
-export function useCurrentSession(): { session: FocusSession | null; elapsed: number } {
-  const query = useQuery({
-    queryKey: ['sessions', 'current'],
-    queryFn: ({ signal }) => api<FocusSession | null>('/api/sessions/current', { signal }),
-    refetchInterval: CURRENT_POLL_MS,
-  });
-  const session = query.data ?? null;
-  const elapsed = useElapsed(session);
-  return { session, elapsed };
+const CURRENT_KEY = ['sessions', 'current'] as const;
+
+/** The open session as the hub last sent it, and the instant its clock counts from. */
+export type CurrentFocus = {
+  session: FocusSession | null;
+  /** When the reply landed, in ms. */
+  receivedAt: number;
+  /**
+   * While the session runs, the instant its focus counts from: the reply's landing less the
+   * hub's figure. It lives in the query cache, so every clock on screen counts from the same one.
+   */
+  since: number;
+};
+
+/** A reply within this of the running count is the same clock, seen through rounding and the trip. */
+export const SLACK_MS = 1500;
+
+const isRunning = (session: FocusSession | null): boolean =>
+  session !== null && session.status === 'running' && session.autoPausedAt === null;
+
+/**
+ * Where a reply's clock counts from. A running session keeps its old start while the hub agrees
+ * with it to within `SLACK_MS`, so a poll never nudges the clock back a second. Otherwise — a new
+ * session, a resume, the time a sleeping Mac took off — the hub's figure is the clock.
+ */
+export function anchorReply(session: FocusSession | null, receivedAt: number, previous: CurrentFocus | undefined): CurrentFocus {
+  const since = receivedAt - (session?.focusSeconds ?? 0) * 1000;
+  const sameClock =
+    previous !== undefined &&
+    isRunning(previous.session) &&
+    isRunning(session) &&
+    previous.session?.id === session?.id &&
+    Math.abs(since - previous.since) < SLACK_MS;
+  return { session, receivedAt, since: sameClock ? previous.since : since };
+}
+
+/** Whole seconds of focus at `now`: counted on from `since` while it runs, the hub's figure while it waits. */
+export function focusElapsed(current: CurrentFocus | undefined, now: number): number {
+  if (current === undefined || current.session === null) return 0;
+  if (!isRunning(current.session)) return current.session.focusSeconds;
+  return Math.max(0, Math.floor((Math.max(now, current.receivedAt) - current.since) / 1000));
 }
 
 /**
- * Whole seconds of focus as of now: the hub's figure when its reply landed,
- * plus the seconds since, while the session runs and the Mac is awake. A new
- * reply starts the count again from its own figure, and never takes it back —
- * both the local tick and the 5 s reply between them keep it rising.
+ * The open session, re-read every 5 s, and its focus time. Every caller reads the same reply and
+ * the same shared tick, so the rail's clock and the Focus panel's never disagree.
  */
-export function useElapsed(session: FocusSession | null): number {
-  const running = session?.status === 'running' && session.autoPausedAt === null;
-  const focusSeconds = session?.focusSeconds ?? 0;
-  const [, setTick] = useState(0);
-  // The figure and the moment it arrived; after a reply a new pair replaces both together.
-  const [from, setFrom] = useState({ since: Date.now(), focusSeconds });
-  // The highest figure shown: neither an early local tick nor a late reply takes the clock back.
-  const [high, setHigh] = useState(focusSeconds);
-
-  useEffect(() => {
-    setFrom({ since: Date.now(), focusSeconds });
-    setHigh((shown) => Math.max(shown, focusSeconds));
-    const timer = running ? setInterval(() => setTick((n) => n + 1), 1000) : undefined;
-    return () => clearInterval(timer);
-  }, [running, focusSeconds]);
-
-  if (!running) return focusSeconds;
-  const shown = from.focusSeconds + Math.floor((Date.now() - from.since) / 1000);
-  if (shown > high) setHigh(shown);
-  return Math.max(high, shown);
+export function useCurrentSession(): { session: FocusSession | null; elapsed: number } {
+  const query = useQuery({
+    queryKey: CURRENT_KEY,
+    queryFn: async ({ signal, client }) => {
+      const session = await api<FocusSession | null>('/api/sessions/current', { signal });
+      return anchorReply(session, Date.now(), client.getQueryData<CurrentFocus>(CURRENT_KEY));
+    },
+    refetchInterval: CURRENT_POLL_MS,
+  });
+  const current = query.data;
+  const session = current?.session ?? null;
+  const now = useNow(isRunning(session));
+  return { session, elapsed: focusElapsed(current, now) };
 }
 
 export type SessionInput = {
