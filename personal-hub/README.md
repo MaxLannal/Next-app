@@ -1,4 +1,10 @@
-# Next — a personal hub for focus, writing and progress
+<p align="center"><img src="docs/images/logo.png" alt="Next app icon" width="128" height="128"></p>
+
+<h1 align="center">Next</h1>
+
+<p align="center">A personal hub for focus, writing and progress, running on your own Mac.</p>
+
+![The dashboard: date and clock over a fog photograph, today's agenda, goals and the focus timer](docs/images/dashboard.png)
 
 Next is a personal hub that runs on your own Mac. You run focus sessions from it, drop in the files and photos from each session, write essays, track goals, sleep and exercise, map how a skill is coming along, and ask a chat sidebar questions that it answers from your own data.
 
@@ -7,6 +13,8 @@ Everything stays local: one SQLite file and a folder of attachments on your Mac.
 It's built for one person. There are no accounts, no cloud hosting and no sample data: an empty panel says it's empty.
 
 ## What's in it
+
+Screenshots show demo data.
 
 ### Dashboard
 - **Time and today**: a live clock, the date, the week number and today's agenda, over a drifting fog photograph.
@@ -20,13 +28,23 @@ It's built for one person. There are no accounts, no cloud hosting and no sample
 - **Resources**: paste a link and the hub fetches its title and sorts it as a PDF, video, course or link.
 - **Now playing**: previous, play/pause and next for whatever is playing, with track info where macOS allows it.
 
+![Skill tracker pyramid beside the year-of-focus heatmap, its pie and yearly totals](docs/images/slate-top.png)
+
+![Last night's sleep with stages and score, the last 14 nights, and push-up and squat logging](docs/images/sleep-exercise.png)
+
+![Month calendar with event dots beside the resources list](docs/images/calendar-resources.png)
+
 ### Essays
 Three columns: Personal meditations, Plans and Insights. The editor works like a word processor: styles, fonts, lists, tables, images, links, inline and block math, find and replace, and a live word count. It autosaves within a second of your last keystroke and keeps the last 30 snapshots. Essays export to `.docx` or PDF.
+
+![Essays in three columns: personal meditations, plans and insights](docs/images/essays.png)
 
 ### Database
 Every focus session with its notes and attachments, filtered by search, subject, tag, date, file type, goal or source. Images (including HEIC), PDFs, code, notebooks and LaTeX all preview in place. Code and text files can sync both ways with a private GitHub repository.
 
 A chat sidebar answers from your data: goals, focus totals, sessions, essays, LaTeX from photos, synced code, sleep and exercise. It can only read; it never changes anything.
+
+![The database: filters on the left, focus sessions grouped by day](docs/images/database.png)
 
 ### Skills
 One canvas per skill, split into stages stacked upward from the foundations. You name each stage yourself.
@@ -34,6 +52,10 @@ One canvas per skill, split into stages stacked upward from the foundations. You
 - **Experiences** are focus sessions, with their files drawn as small icons (a red PDF, a page with the Python snakes, a Word document, and so on). Click a file to open it.
 - Drop an experience on a step to link them. Drag cards up a stage as the work gets harder; each stage grows to hold what's in it.
 - Zoom out and the cards fade to their titles and dates, joined by lines, so a crowded skill still reads at a glance.
+
+![A skill canvas: steps with their completion dates, linked experiences with file icons, and named stages](docs/images/skills.png)
+
+![The same skill zoomed out: only titles and dates, joined by lines](docs/images/skills-zoomed-out.png)
 
 ### Settings
 The hub passcode and token, the iPhone Shortcut instructions for sleep, Tailscale setup for phone access, the GitHub sync repository, and a switch to keep the Mac awake while it's plugged in.
