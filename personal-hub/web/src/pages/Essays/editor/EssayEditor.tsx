@@ -13,6 +13,7 @@ import { FindReplaceBar } from './FindReplaceBar.tsx';
 import { Toolbar, type ExportKind } from './Toolbar.tsx';
 import { backupTime, clearBackup, readBackup, useAutosave, type UnsavedBackup } from './useAutosave.ts';
 import '../essays.css';
+import 'katex/dist/katex.min.css';
 import './print.css';
 
 type Snapshot = { id: number; createdAt: string };
