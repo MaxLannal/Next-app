@@ -60,6 +60,42 @@ it('every git call carries the gh credential flags', async () => {
   for (const args of seen) expect(args.slice(0, 4)).toEqual(CREDENTIALS);
 });
 
+it('a pull retries a row left pending', async () => {
+  const sessionId = setup();
+  const { mkdirSync: mk } = await import('node:fs');
+  mk(join(t.paths.dataDir, 'files', '2026', '11'), { recursive: true });
+  writeFileSync(join(t.paths.dataDir, 'files', '2026', '11', '2-hw.py'), 'v\n');
+  const id = Number(
+    t.db
+      .prepare(
+        `INSERT INTO attachments (session_id, kind, filename, mime, size, path, sha256, source, repo_state, created_at)
+         VALUES (?, 'code', 'hw.py', 'text/x-python', 2, 'files/2026/11/2-hw.py', 'h', 'upload', 'pending', '2026-11-22T18:00:00.000Z')`,
+      )
+      .run(sessionId).lastInsertRowid,
+  );
+  const { git, seen } = scriptedGit([
+    { args: ['rev-parse', 'HEAD'], stdout: 'abc\n' },
+    { args: ['pull', '--rebase', '--no-edit'] },
+    { args: ['diff', '--name-status', 'abc..HEAD'] },
+    { args: ['rev-parse', '--verify', 'HEAD'], stdout: 'abc\n' },
+    { args: ['rev-parse', '--verify', '@{upstream}'], stdout: 'abc\n' },
+    { args: ['rev-list', '--count', '@{upstream}..HEAD'], stdout: '0\n' },
+    { args: ['hash-object', '--', `${FOLDER}/hw.py`], stdout: 'blob\n' },
+    { args: ['rev-parse', '--verify', `HEAD:${FOLDER}/hw.py`] },
+    { args: ['add', '--', `${FOLDER}/hw.py`] },
+    { args: ['-c', 'user.name=Personal Hub', '-c', 'user.email=hub@localhost', 'commit', '-q', '-m', 'Ch. 4 exercises: add hw.py'] },
+    { args: ['pull', '--rebase', '--no-edit'] },
+    { args: ['push', 'origin', 'HEAD'] },
+  ]);
+  const sync = createGitSync(t, { git, syncEnabled: true });
+
+  const result = await sync.pull();
+
+  expect(result.pending).toBe(0);
+  expect(t.db.prepare('SELECT repo_state FROM attachments WHERE id = ?').get(id)).toEqual({ repo_state: 'synced' });
+  expect(seen.some((args) => args[4] === 'push')).toBe(true);
+});
+
 it('status counts pending and failed uploads', async () => {
   const sessionId = setup();
   const insert = (state: string) =>

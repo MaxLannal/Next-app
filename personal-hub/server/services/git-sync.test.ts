@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,7 +11,7 @@ import type { GitSync } from '../context.ts';
 import { sessionFolder } from '../lib/slug.ts';
 import { dayKey } from '../lib/time.ts';
 import { createGitSync, hookAttachmentPushes, type GitRunner } from './git-sync.ts';
-import type { TestContext } from '../test/helpers.ts';
+import type { Fakes, TestContext } from '../test/helpers.ts';
 import { makeTestContext } from '../test/helpers.ts';
 
 const run = promisify(execFile);
@@ -64,20 +65,30 @@ beforeEach(async () => {
   await git(work, 'push', '-q', 'origin', 'HEAD:main');
   remoteUrl = `file://${bare}`;
 
-  t = makeTestContext();
+  const made = makeTestContext();
+  t = made;
   repoDir = t.paths.repoDir;
-  gitSync = connectGit();
-
-  // The app's routes read `ctx.git` per request, so the real service serves them too.
-  Object.defineProperty(t, 'git', { get: () => gitSync, set: () => {}, configurable: true });
+  gitSync = createGitSync(t, { remoteUrl });
   hookAttachmentPushes(t);
+  serveRoutesWithRealGit(made.fakes.git); // the fake the app captured
+  t.git = gitSync; // what the tests drive directly
 });
 
-/** A real GitSync over the test's data folder, cloning the bare repo through `remoteUrl`. */
-function connectGit(opts: { runner?: GitRunner } = {}): GitSync {
-  const git = createGitSync(t, { remoteUrl, ...opts });
-  t.git = git;
-  return git;
+/**
+ * The app was built with its fake git. Hand its routes the same real service the upload hook uses,
+ * so an upload, a connect and a sync all act on one clone, but keep recording their calls.
+ */
+function serveRoutesWithRealGit(fake: Fakes['git']): void {
+  // The methods have unlike signatures, so the swap is untyped here.
+  const target = fake as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const real = gitSync as unknown as Record<string, (...args: unknown[]) => unknown>;
+  for (const method of ['status', 'enqueuePush', 'pull', 'connect']) {
+    const record = (fake.calls as Record<string, unknown[]>)[method];
+    target[method] = (...args: unknown[]) => {
+      record.push(args);
+      return real[method](...args);
+    };
+  }
 }
 
 afterEach(async () => {
@@ -386,5 +397,95 @@ describe('routes', () => {
     const res = await t.req('POST', '/api/github/sync');
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ configured: true, lastSyncAt: expect.any(String) });
+  });
+
+  it('connect answers 200 once the clone works, even after an earlier push failure', async () => {
+    const sessionId = insertSession();
+    await t.req('POST', '/api/github/connect', { repo: 'max/work-journal' });
+    const allow = refusePushes();
+    await upload([['hw.py', 'v1\n']], sessionId);
+    await t.jobs.drain();
+    expect(status().lastError).toMatch(/^push failed:/);
+    allow();
+
+    const res = await t.req('POST', '/api/github/connect', { repo: 'max/work-journal' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ configured: true, repo: 'max/work-journal' });
+  });
+});
+
+describe('pull fixes', () => {
+  async function upstream(files: Record<string, string>): Promise<void> {
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(join(work, path, '..'), { recursive: true });
+      writeFileSync(join(work, path), content);
+    }
+    await git(work, 'add', '-A');
+    await git(work, 'commit', '-q', '-m', 'from another clone');
+    await git(work, 'fetch', '-q', 'origin');
+    await git(work, 'rebase', '-q', 'origin/main');
+    await git(work, 'push', '-q', 'origin', 'HEAD:main');
+  }
+
+  it('a pulled file over 1 MB is searchable', async () => {
+    const sessionId = insertSession();
+    await t.req('POST', '/api/github/connect', { repo: 'max/work-journal' });
+    // Many short words: one token longer than the FTS limit would stop the whole row being indexed.
+    const body = `${'pad '.repeat(262_150)}needleneedle\n`;
+    expect(body.length).toBeGreaterThan(1024 * 1024);
+    await upstream({ [`sessions/2026-11-22_${SESSION_ID}/big.py`]: body });
+
+    await gitSync.pull();
+
+    const [big] = await attachmentsOf(sessionId);
+    expect(big.filename).toBe('big.py');
+    expect(big.extractedText.length).toBe(body.length);
+    const res = await t.req('GET', '/api/search?q=needleneedle');
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { refId: number }[]).map((hit) => hit.refId)).toContain(big.id);
+  });
+
+  it('a changed file updates its text and sha', async () => {
+    const sessionId = insertSession();
+    await t.req('POST', '/api/github/connect', { repo: 'max/work-journal' });
+    const path = `sessions/2026-11-22_${SESSION_ID}/extra.py`;
+    await upstream({ [path]: 'one\n' });
+    await gitSync.pull();
+    const [first] = await attachmentsOf(sessionId);
+
+    await upstream({ [path]: 'two\n' });
+    await gitSync.pull();
+
+    const [changed] = await attachmentsOf(sessionId);
+    expect(changed.id).toBe(first.id);
+    expect(changed.extractedText).toBe('two\n');
+    const sha = (t.db.prepare('SELECT sha256 FROM attachments WHERE id = ?').get(first.id) as { sha256: string }).sha256;
+    expect(sha).toBe(createHash('sha256').update('two\n').digest('hex'));
+  });
+
+  it('retries a row left pending', async () => {
+    const sessionId = insertSession();
+    await t.req('POST', '/api/github/connect', { repo: 'max/work-journal' });
+    const [hw] = await upload([['hw.py', 'v1\n']], sessionId);
+    await t.jobs.drain();
+    // As if the server stopped between marking the row and pushing: an orphaned pending row.
+    t.db.prepare("UPDATE attachments SET repo_state = 'pending', repo_path = NULL WHERE id = ?").run(hw.id);
+    rmSync(join(repoDir, 'sessions'), { recursive: true, force: true });
+    await git(repoDir, 'reset', '-q', '--hard', 'HEAD');
+
+    await gitSync.pull();
+
+    expect(row(hw.id).repo_state).toBe('synced');
+    expect(await committedFiles()).toContain(`sessions/2026-11-22_${SESSION_ID}/hw.py`);
+    expect(status().pending).toBe(0);
+  });
+
+  it('an upload with no session is failed with a reason on the status line', async () => {
+    await t.req('POST', '/api/github/connect', { repo: 'max/work-journal' });
+    const [loose] = await upload([['hw.py', 'v1\n']], null);
+    await t.jobs.drain();
+
+    expect(row(loose.id)).toMatchObject({ repo_state: 'failed', repo_path: null });
+    expect(status().lastError).toBe('push failed: hw.py has no session to file it under');
   });
 });

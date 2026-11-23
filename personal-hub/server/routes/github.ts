@@ -15,8 +15,10 @@ export function githubRoutes(ctx: AppContext): Hono {
     if (typeof repo !== 'string' || !REPO_NAME.test(repo.trim())) {
       return c.json({ error: 'A repository name looks like owner/name' }, 400);
     }
+    // 200 whenever the clone works; a stale lastError (an earlier push failure) is for the UI to
+    // show, not a reason to call connecting a failure.
     const status = await ctx.git.connect(repo.trim());
-    return c.json(status, status.lastError === null ? 200 : 502);
+    return c.json(status, status.configured ? 200 : 502);
   });
 
   routes.post('/sync', async (c) => c.json(await ctx.git.pull()));

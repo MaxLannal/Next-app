@@ -2,13 +2,15 @@
 // clone is pulled every couple of minutes so files committed elsewhere land in the hub.
 
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { GitStatus } from '../../shared/types.ts';
 import type { AppContext, GitSync } from '../context.ts';
-import { isSyncable } from '../lib/files.ts';
+import { classifyFile, isSyncable } from '../lib/files.ts';
 import { isInFolder, sessionFolder } from '../lib/slug.ts';
+import { dayKey } from '../lib/time.ts';
 import { createAttachment, getAttachment, onAttachmentCreated, updateAttachment } from '../repo/attachments.ts';
 
 export type GitResult = { code: number; stdout: string; stderr: string };
@@ -45,6 +47,14 @@ type SessionRow = { id: number; name: string; started_at: string; repo_folder: s
 
 /** A repo-relative file path: no leading slash, no backslash, no `..`. */
 const UNSAFE_PATH = /^\/|\\|(^|\/)\.\.(\/|$)/;
+
+/** A push that can't go ahead; the message already reads `hw.py has no session …`. */
+class ReasonError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReasonError';
+  }
+}
 
 export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSync {
   const git = opts.git ?? runGit;
@@ -96,19 +106,17 @@ export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSy
   /** The session's repo folder, written down the first time it's needed (older sessions have none). */
   function folderOf(session: SessionRow): string {
     if (session.repo_folder !== null) return session.repo_folder;
-    const day = (ctx.db
-      .prepare("SELECT strftime('%Y-%m-%d', ?, 'localtime') AS day")
-      .get(session.started_at) as { day: string | null }).day;
-    const folder = sessionFolder(day ?? session.started_at.slice(0, 10), session.name);
+    const folder = sessionFolder(dayKey(new Date(session.started_at), ctx.timeZone()), session.name);
     ctx.db.prepare('UPDATE focus_sessions SET repo_folder = ? WHERE id = ?').run(folder, session.id);
     return folder;
   }
 
   /**
    * `hw.py`, `hw (2).py`, `hw (3).py` … the first name the clone doesn't hold. A name that holds
-   * the same bytes is reused (`skip`: nothing new to write), never overwritten.
+   * the same bytes is reused (`skip`: nothing new to write), never overwritten. Null once every
+   * numbered name is taken: better a failed push than a guess that overwrites.
    */
-  function freeName(folder: string, filename: string, content: Buffer): { name: string; skip: boolean } {
+  function freeName(folder: string, filename: string, content: Buffer): { name: string; skip: boolean } | null {
     const dot = filename.lastIndexOf('.');
     const stem = dot > 0 ? filename.slice(0, dot) : filename;
     const ext = dot > 0 ? filename.slice(dot) : '';
@@ -118,22 +126,27 @@ export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSy
       if (!existsSync(target)) return { name, skip: false };
       if (readFileSync(target).equals(content)) return { name, skip: true };
     }
-    return { name: `${stem} (10000)${ext}`, skip: false };
+    return null;
   }
 
   async function pushOne(attachmentId: number): Promise<void> {
     const a = getAttachment(ctx, attachmentId);
-    if (!a || !isSyncable(a.kind) || a.parentId !== null) return;
+    // Only uploads of code, LaTeX and text go up: photos, PDFs, files renamed on the way in and
+    // derived files stay local, and are not in this job at all, so they are left alone.
+    if (!a || a.source !== 'upload' || !isSyncable(a.kind) || a.parentId !== null) return;
     const source = ctx.db.prepare('SELECT path FROM attachments WHERE id = ?').get(attachmentId) as { path: string } | undefined;
     const session = a.sessionId === null ? undefined : sessionRow(a.sessionId);
     if (!source || !session || !repoDir || UNSAFE_PATH.test(a.filename)) {
-      ctx.db.prepare("UPDATE attachments SET repo_state = 'failed' WHERE id = ? AND repo_state IS NULL").run(attachmentId);
-      return;
+      throw new ReasonError(
+        !source ? 'is missing its locally stored file' : !session ? 'has no session to file it under' : 'has a name that is not a plain file name',
+      );
     }
 
     const folder = folderOf(session);
     const content = readFileSync(join(ctx.paths.dataDir, source.path));
-    const { name, skip } = freeName(folder, a.filename, content);
+    const chosen = freeName(folder, a.filename, content);
+    if (chosen === null) throw new ReasonError('every name for this file is taken in the repo');
+    const { name, skip } = chosen;
     const repoPath = `${folder}/${name}`;
 
     // `skip` means the file is already in the clone. A commit an earlier attempt made but never
@@ -166,6 +179,21 @@ export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSy
     lastError = null;
   }
 
+  /** Records a failed push: the row, the status line, and one log line. */
+  function markFailed(attachmentId: number, err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err);
+    ctx.db.prepare("UPDATE attachments SET repo_state = 'failed' WHERE id = ?").run(attachmentId);
+    lastError = `push failed: ${message}`;
+    console.error(`GitHub push failed for attachment ${attachmentId}: ${message}`);
+  }
+
+  /** A failure whose message already says what went wrong, without git's stderr. */
+  function describe(attachmentId: number, err: unknown): unknown {
+    if (!(err instanceof ReasonError)) return err;
+    const name = (ctx.db.prepare('SELECT filename FROM attachments WHERE id = ?').get(attachmentId) as { filename: string } | undefined)?.filename;
+    return new Error(`${name ?? 'this file'} ${err.message}`);
+  }
+
   /** Pushes one upload; a failure is written on the attachment and on the status line, never thrown. */
   async function pushJob(attachmentId: number): Promise<void> {
     if (!ready()) return;
@@ -178,10 +206,7 @@ export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSy
     try {
       await pushOne(attachmentId);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      ctx.db.prepare("UPDATE attachments SET repo_state = 'failed' WHERE id = ?").run(attachmentId);
-      lastError = `push failed: ${message}`;
-      console.error(`GitHub push failed for attachment ${attachmentId}: ${message}`);
+      markFailed(attachmentId, describe(attachmentId, err));
     }
   }
 
@@ -189,16 +214,16 @@ export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSy
     ctx.jobs.enqueue('git-push', () => pushJob(attachmentId));
   }
 
-  /** Retries uploads whose earlier push failed. */
+  /** Retries uploads whose earlier push failed, and rows a crash left pending. */
   async function retryFailed(): Promise<void> {
-    const rows = ctx.db.prepare("SELECT id FROM attachments WHERE repo_state = 'failed'").all() as { id: number }[];
+    const rows = ctx.db
+      .prepare("SELECT id FROM attachments WHERE repo_state IN ('pending', 'failed') ORDER BY id")
+      .all() as { id: number }[];
     for (const r of rows) {
       try {
         await pushOne(r.id); // on failure, stays failed with its error
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        ctx.db.prepare("UPDATE attachments SET repo_state = 'failed' WHERE id = ?").run(r.id);
-        lastError = `push failed: ${message}`;
+        markFailed(r.id, describe(r.id, err));
       }
     }
   }
@@ -212,13 +237,17 @@ export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSy
     return sessions.find((s) => isInFolder(repoPath, s.repo_folder))?.id ?? null;
   }
 
-  /** Files in a newer clone's HEAD that the hub doesn't hold yet: new ones, or changed ones. */
+  /**
+   * Files in a newer clone's HEAD that the hub doesn't hold yet: new ones, or changed ones.
+   * `createAttachment` and `updateAttachment` each open their own transaction, so nothing here
+   * holds one open across them; a future caller that does needs a savepoint for the nesting.
+   */
   async function applyChange(statusCode: string, repoPath: string): Promise<void> {
     if (!repoDir) return;
-    const existing = ctx.db.prepare('SELECT id, sha256 FROM attachments WHERE repo_path = ?').get(repoPath) as
-      | { id: number; sha256: string }
+    const existing = ctx.db.prepare('SELECT id FROM attachments WHERE repo_path = ?').get(repoPath) as
+      | { id: number }
       | undefined;
-    const absolute = join(repoDir!, repoPath);
+    const absolute = join(repoDir, repoPath);
 
     if (statusCode === 'D') {
       if (existing) ctx.db.prepare("UPDATE attachments SET repo_state = 'removed' WHERE id = ?").run(existing.id);
@@ -226,18 +255,18 @@ export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSy
     }
     if (!existsSync(absolute)) return; // a deletion stuck between the record and the checkout
     const bytes = readFileSync(absolute);
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
     const name = repoPath.split('/').at(-1)!;
+    // Always passed, even empty, so a large file's import text is read on every change and the
+    // index always matches the file; `undefined` would leave the old text in the index.
+    const text = isSyncable(classifyFile(name)) ? bytes.toString('utf8') : '';
 
     if (existing) {
       const { id } = existing;
-      const files = ctx.db.prepare('SELECT path, extracted_text FROM attachments WHERE id = ?').get(id) as {
-        path: string;
-        extracted_text: string;
-      };
-      const text = bytes.toString('utf8');
-      writeFileSync(join(ctx.paths.dataDir, files.path), bytes);
+      const { path } = ctx.db.prepare('SELECT path FROM attachments WHERE id = ?').get(id) as { path: string };
+      writeFileSync(join(ctx.paths.dataDir, path), bytes);
       updateAttachment(ctx, id, { extractedText: text });
-      ctx.db.prepare("UPDATE attachments SET repo_state = 'synced' WHERE id = ?").run(id);
+      ctx.db.prepare("UPDATE attachments SET sha256 = ?, repo_state = 'synced' WHERE id = ?").run(sha256, id);
       return;
     }
 
@@ -247,6 +276,8 @@ export function createGitSync(ctx: AppContext, opts: GitSyncOptions = {}): GitSy
       bytes,
       source: 'github',
       repoPath,
+      extractedText: text,
+      notify: false,
     });
   }
 
