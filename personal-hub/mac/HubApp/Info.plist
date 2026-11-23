@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>Hub</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.personalhub.app</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Hub</string>
+  <key>CFBundleDisplayName</key>
+  <string>Hub</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.productivity</string>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSCameraUsageDescription</key>
+  <string>Hub uses the camera to photograph your finished work.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Hub uses the camera to photograph your finished work.</string>
+  <!-- Required verbatim by Task 23's brief, but the hub records no audio: the app
+       grants no microphone access and denies WKMediaCaptureType.audio (see
+       WebViewController). Keep it; never ask the OS for the microphone. -->
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Hub shows your calendar on its dashboard.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Hub uses Apple events to read your calendar through Calendar.app when the native helper is unavailable.</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+</dict>
+</plist>
