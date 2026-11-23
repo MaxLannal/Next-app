@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import type { FocusSession, HeatmapStats, SubjectStats } from '../../shared/types.ts';
+import { focusByDay } from '../repo/sessions.ts';
+import type { FocusSession, HeatmapStats, SubjectSlice } from '../../shared/types.ts';
 import { makeTestContext, type TestContext } from '../test/helpers.ts';
 
 let t: TestContext;
@@ -26,30 +27,24 @@ it('week by subject includes a live session', async () => {
 
   const res = await t.req('GET', '/api/stats/subjects?range=week&date=2026-11-18');
   expect(res.status).toBe(200);
-  const body = (await res.json()) as SubjectStats;
-  expect(body.days).toEqual([
-    '2026-11-16',
-    '2026-11-17',
-    '2026-11-18',
-    '2026-11-19',
-    '2026-11-20',
-    '2026-11-21',
-    '2026-11-22',
-  ]);
-  expect(body.slices).toEqual([
+  const slices = (await res.json()) as SubjectSlice[];
+  expect(slices).toEqual([
     { subjectId: expect.any(Number), name: 'Algebra', seconds: 3600 },
     { subjectId: expect.any(Number), name: 'Physics', seconds: 1800 },
   ]);
+
+  // A week's seven day keys are the range library's job; the route only sums them.
+  const week = focusByDay(t.db, '2026-11-16', '2026-11-23', 'America/Chicago', t.now());
+  expect([...week.keys()]).toEqual(['2026-11-17', '2026-11-22']);
 });
 
 it('a session crossing local midnight is split', async () => {
   // 04:00–05:00Z on 22 Nov is 23:00–00:00 Chicago on 21 Nov: it lands on the 21st only.
   await addDone('Late', undefined, '2026-11-22T04:30:00.000Z', '2026-11-22T05:30:00.000Z');
   const res = await t.req('GET', '/api/stats/subjects?range=day&date=2026-11-21');
-  const body = (await res.json()) as SubjectStats;
-  expect(body.slices).toEqual([{ subjectId: null, name: 'No subject', seconds: 3600 }]);
-  const other = (await (await t.req('GET', '/api/stats/subjects?range=day&date=2026-11-22')).json()) as SubjectStats;
-  expect(other.slices).toEqual([]);
+  expect(await res.json()).toEqual([{ subjectId: null, name: 'No subject', seconds: 3600 }]);
+  const other = await t.req('GET', '/api/stats/subjects?range=day&date=2026-11-22');
+  expect(await other.json()).toEqual([]);
 });
 
 it('rejects a bad range or date', async () => {

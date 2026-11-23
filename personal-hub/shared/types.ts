@@ -135,8 +135,6 @@ export type SessionFilters = {
   limit?: number;
 };
 
-export type SubjectStats = { days: string[]; slices: SubjectSlice[] };
-
 export type HeatmapStats = {
   days: HeatmapDay[];
   totals: { seconds: number; activeDays: number; longestStreak: number; currentStreak: number };

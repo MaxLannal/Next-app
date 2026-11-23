@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { HeatmapDay, HeatmapStats, SubjectSlice, SubjectStats } from '../../shared/types.ts';
+import type { HeatmapDay, HeatmapStats, SubjectSlice } from '../../shared/types.ts';
 import type { AppContext } from '../context.ts';
 import { addDays, dayKey, heatmapLevel, rangeBounds, streaks, type Range } from '../lib/time.ts';
 import { focusByDay } from '../repo/sessions.ts';
@@ -39,8 +39,7 @@ export function statsRoutes(ctx: AppContext): Hono {
         bySubject.set(subjectId, { name: s.name, seconds: (bySubject.get(subjectId)?.seconds ?? 0) + s.seconds });
       }
     }
-    const body: SubjectStats = { days: bounds.days, slices: sortedSlices(bySubject) };
-    return c.json(body);
+    return c.json(sortedSlices(bySubject));
   });
 
   routes.get('/heatmap', (c) => {

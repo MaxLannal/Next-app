@@ -73,7 +73,7 @@ it('a gap across local midnight still pauses at last_alive', async () => {
   expect(paused.status).toBe('paused');
   expect(paused.focusSeconds).toBe(300);
   const day = await t.req('GET', '/api/stats/subjects?range=day&date=2026-11-21');
-  expect(((await day.json()) as { slices: { seconds: number }[] }).slices).toEqual([
+  expect(await day.json()).toEqual([
     { subjectId: null, name: 'No subject', seconds: 300 },
   ]);
 });
