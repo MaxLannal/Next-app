@@ -208,7 +208,7 @@ struct HubPaths {
     let repo: String
     let dataDir: String
 
-    var serverScript: String { repo + "/personal-hub/server/main.ts" }
+    var serverScript: String { repo + "/server/main.ts" }
     var logFile: String { dataDir + "/logs/app-server.log" }
 
     /// The data folder is `~/PersonalHub`, or `$HUB_APP_DATA_DIR` when set
@@ -240,7 +240,7 @@ struct HubPaths {
         return nil
     }
 
-    /// Spawns `<node> <repo>/personal-hub/server/main.ts` with `HUB_DATA_DIR`
+    /// Spawns `<node> <repo>/server/main.ts` with `HUB_DATA_DIR`
     /// set, appending its output to `logs/app-server.log`.
     func launcher() -> ServerProcess.Launcher {
         return {
@@ -262,7 +262,7 @@ struct HubPaths {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: node)
             process.arguments = [serverScript]
-            process.currentDirectoryURL = URL(fileURLWithPath: repo + "/personal-hub")
+            process.currentDirectoryURL = URL(fileURLWithPath: repo)
             process.environment = environment
             process.standardOutput = log
             process.standardError = log

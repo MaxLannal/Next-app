@@ -73,7 +73,8 @@ The hub passcode and token, the iPhone Shortcut instructions for sleep, Tailscal
 ## Getting started
 
 ```bash
-cd personal-hub
+git clone https://github.com/MaxLannal/Next.git
+cd Next
 npm install
 npm run setup
 ```
@@ -103,7 +104,7 @@ The hub serves on <http://localhost:4747>. Requests from the Mac itself need no 
 
 ## Day-to-day commands
 
-Run these inside `personal-hub/`:
+Run these from the repository root:
 
 | Command | What it does |
 | --- | --- |
@@ -141,8 +142,6 @@ The database upgrades itself one version at a time when the server starts, so an
   - `calendar-helper` reads events through EventKit.
   - `media-helper` sends media keys.
 - **Look**: the Dusk theme from [Nutlope/hallmark](https://github.com/Nutlope/hallmark); see [`docs/dusk-theme.md`](docs/dusk-theme.md).
-
-The full design is in [`docs/superpowers/specs/2026-11-22-personal-hub-dusk-design.md`](../docs/superpowers/specs/2026-11-22-personal-hub-dusk-design.md).
 
 ## Credits
 

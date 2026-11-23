@@ -217,7 +217,7 @@ struct ServerProcessTests {
 
             let standard = try HubPaths.load(from: file, environment: [:])
             try expect(standard.node == "/opt/node/bin/node", "node is \(standard.node)")
-            try expect(standard.serverScript == "/Users/you/Next/personal-hub/server/main.ts", "script is \(standard.serverScript)")
+            try expect(standard.serverScript == "/Users/you/Next/server/main.ts", "script is \(standard.serverScript)")
             try expect(standard.dataDir == NSHomeDirectory() + "/PersonalHub", "data dir is \(standard.dataDir)")
             try expect(standard.logFile == NSHomeDirectory() + "/PersonalHub/logs/app-server.log", "log is \(standard.logFile)")
 
@@ -229,7 +229,7 @@ struct ServerProcessTests {
             let dir = try temporaryDirectory()
             defer { try? FileManager.default.removeItem(at: dir) }
             let repo = dir.appendingPathComponent("repo")
-            let script = repo.appendingPathComponent("personal-hub/server/main.ts")
+            let script = repo.appendingPathComponent("server/main.ts")
             try FileManager.default.createDirectory(at: script.deletingLastPathComponent(), withIntermediateDirectories: true)
             // /bin/sh stands in for node, so this "main.ts" is a shell script.
             try Data("echo \"data=$HUB_DATA_DIR cwd=$(pwd -P)\"\n".utf8).write(to: script)
@@ -242,9 +242,9 @@ struct ServerProcessTests {
             try expect(!child.isRunning, "the stand-in server never exited")
             let log = try String(contentsOfFile: paths.logFile, encoding: .utf8)
             // `pwd -P` gives /private/var/…; Foundation won't, so match the unique tail.
-            let cwdTail = "\(dir.lastPathComponent)/repo/personal-hub\n"
+            let cwdTail = "\(dir.lastPathComponent)/repo\n"
             try expect(log.contains("data=\(dataDir) "), "log does not show HUB_DATA_DIR: \(log)")
-            try expect(log.contains(cwdTail), "log does not show the personal-hub cwd: \(log)")
+            try expect(log.contains(cwdTail), "log does not show the repo cwd: \(log)")
         }
 
         test("logs why node couldn't run") {

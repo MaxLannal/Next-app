@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
-// The web project runs in jsdom: resolve files from the working directory (personal-hub/).
+// The web project runs in jsdom: resolve files from the working directory (the repo root).
 const PUBLIC = join(process.cwd(), 'web/public');
 const SW = readFileSync(join(PUBLIC, 'sw.js'), 'utf8');
 const ORIGIN = 'http://100.64.0.2:4747';

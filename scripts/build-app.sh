@@ -5,7 +5,7 @@
 set -euo pipefail
 
 HUB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_DIR="$(cd "$HUB_DIR/.." && pwd)"
+REPO_DIR="$HUB_DIR"
 SRC="$HUB_DIR/mac/HubApp"
 TARGET="$(uname -m)-apple-macos14.0"
 WORK="$(mktemp -d)"
