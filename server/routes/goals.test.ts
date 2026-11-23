@@ -188,6 +188,30 @@ it('lists by status, newest first, and rejects an unknown status', async () => {
   expect((await t.req('GET', '/api/goals?status=someday')).status).toBe(400);
 });
 
+it('keeps the order goals are dragged into, with a new goal on top', async () => {
+  const one = await create({ title: 'One' });
+  const two = await create({ title: 'Two' });
+  const three = await create({ title: 'Three' });
+  const res = await t.req('PUT', '/api/goals/order', { ids: [one.id, three.id, two.id] });
+  expect(res.status).toBe(200);
+  expect(((await res.json()) as Goal[]).map((g) => g.title)).toEqual(['One', 'Three', 'Two']);
+  expect((await list()).map((g) => g.title)).toEqual(['One', 'Three', 'Two']);
+
+  await create({ title: 'Four' });
+  expect((await list()).map((g) => g.title)).toEqual(['Four', 'One', 'Three', 'Two']);
+});
+
+it('refuses an order that is not the open goals’ ids', async () => {
+  const one = await create({ title: 'One' });
+  const two = await create({ title: 'Two' });
+  for (const body of [{}, { ids: 'one' }, { ids: [one.id, one.id] }, { ids: [one.id, 0] }, { ids: [one.id, 999] }]) {
+    expect((await t.req('PUT', '/api/goals/order', body)).status).toBe(400);
+  }
+  await patch(two.id, { status: 'done' });
+  expect((await t.req('PUT', '/api/goals/order', { ids: [two.id, one.id] })).status).toBe(400);
+  expect((await list()).map((g) => g.title)).toEqual(['One']);
+});
+
 it('deletes a goal and its history', async () => {
   const goal = await create({ title: 'Finish Ch. 4', plannedMinutes: 600 });
   await patch(goal.id, { plannedMinutes: 900 });

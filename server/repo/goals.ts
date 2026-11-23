@@ -57,11 +57,26 @@ export function getGoal(db: DatabaseSync, id: number, today: string, tz: string,
   return row ? toGoal(db, row, today, tz, now) : null;
 }
 
-/** Open goals newest first; done and archived newest first by the day they got there. */
+/** Open goals in the order they were ranked (new ones on top); done and archived newest first by the day they got there. */
 export function listGoals(db: DatabaseSync, status: GoalStatus, today: string, tz: string, now: Date): Goal[] {
-  const order = status === 'done' ? 'done_at DESC, id DESC' : 'created_at DESC, id DESC';
+  const order =
+    status === 'done' ? 'done_at DESC, id DESC' : status === 'open' ? 'rank ASC, created_at DESC, id DESC' : 'created_at DESC, id DESC';
   const rows = db.prepare(`SELECT * FROM goals WHERE status = ? ORDER BY ${order}`).all(status) as GoalRow[];
   return rows.map((row) => toGoal(db, row, today, tz, now));
+}
+
+/**
+ * Ranks the open goals in the order given: `ids` must be every open goal's id, each once. Returns
+ * false, changing nothing, when they aren't.
+ */
+export function rankGoals(db: DatabaseSync, ids: number[]): boolean {
+  return transaction(db, () => {
+    const open = (db.prepare("SELECT id FROM goals WHERE status = 'open'").all() as { id: number }[]).map((r) => r.id);
+    if (open.length !== ids.length || !ids.every((id) => open.includes(id))) return false;
+    const rank = db.prepare('UPDATE goals SET rank = ? WHERE id = ?');
+    ids.forEach((id, i) => rank.run(i, id));
+    return true;
+  });
 }
 
 export function insertGoal(
@@ -69,11 +84,11 @@ export function insertGoal(
   g: { title: string; deadline: string | null; plannedMinutes: number | null },
   now: Date,
 ): number {
-  // A plan given at creation is the original, so accuracy starts from it.
+  // A plan given at creation is the original, so accuracy starts from it. A new goal goes on top.
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO goals (title, created_at, deadline, planned_minutes, original_deadline, original_planned_minutes)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO goals (title, created_at, deadline, planned_minutes, original_deadline, original_planned_minutes, rank)
+       VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(rank), 0) - 1 FROM goals))`,
     )
     .run(g.title, now.toISOString(), g.deadline, g.plannedMinutes, g.deadline, g.plannedMinutes);
   return Number(lastInsertRowid);

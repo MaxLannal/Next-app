@@ -149,4 +149,27 @@ describe('the v3 upgrade', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('v3 → v4 ranks the open goals as they were shown, newest first', async () => {
+    const { mkdtempSync, rmSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { DatabaseSync } = await import('node:sqlite');
+    const dir = mkdtempSync(join(tmpdir(), 'hub-v3-'));
+    const file = join(dir, 'hub.db');
+    try {
+      const v3 = new DatabaseSync(file);
+      for (const step of ['schema.sql', 'skills.sql', 'skills-v3.sql']) v3.exec(readFileSync(new URL(`./${step}`, import.meta.url), 'utf8'));
+      v3.exec('PRAGMA user_version = 3');
+      v3.exec("INSERT INTO goals (title, created_at) VALUES ('Oldest', '2026-11-20T10:00:00.000Z'), ('Newest', '2026-11-22T10:00:00.000Z'), ('Middle', '2026-11-21T10:00:00.000Z')");
+      v3.close();
+
+      const db = openDb(file);
+      const rows = db.prepare('SELECT title FROM goals ORDER BY rank').all() as { title: string }[];
+      expect(rows.map((r) => r.title)).toEqual(['Newest', 'Middle', 'Oldest']);
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

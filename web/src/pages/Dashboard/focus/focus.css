@@ -2,9 +2,13 @@
    wrap-up sheet's fields and files. Rows on the glass, no tiles; periwinkle for
    what ran, apricot for what is paused or doubtful. */
 
-.focus { position: relative; display: grid; gap: var(--space-lg); min-width: 0; }
-/* Room for the stopwatch's dial while a session is open. */
-.focus--timing { min-height: 400px; }
+/* The panel keeps one height beside Goals: the history scrolls inside it, the range sits in the head. */
+.focus { display: flex; flex-direction: column; gap: var(--space-md); flex: 1; min-height: 0; min-width: 0; }
+.focus-panel { --pour-liquid: color-mix(in oklab, var(--color-light) 13%, oklch(22% 0.016 268)); }
+.focus-panel .panel__actions .tabs { flex-wrap: nowrap; gap: 0 var(--space-md); border-bottom: 0; }
+.focus-panel .panel__actions .tab { padding-block: 2px; font-size: var(--text-sm); }
+/* The stopwatch covers the whole panel, head and all. */
+.focus-panel > .stopwatch { border-radius: inherit; }
 
 /* ── Start form ─────────────────────────────────────────────────────────── */
 
@@ -91,7 +95,8 @@
 
 /* ── History beside the pie ─────────────────────────────────────────────── */
 
-.focus__split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--space-lg); align-items: start; }
+.focus__split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--space-lg); align-items: stretch; flex: 1; min-height: 0; }
+.focus__split > .history { align-content: start; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 
 .history { display: grid; gap: var(--space-md); min-width: 0; }
 .history__day { display: grid; gap: var(--space-xs); }
@@ -145,7 +150,12 @@
 .focus__pie-head { display: flex; align-items: baseline; gap: var(--space-sm); width: 100%; }
 .focus__subtitle { font: 500 var(--text-sm)/1.3 var(--font-display); color: var(--color-ink-2); }
 .focus__pie-total { margin-left: auto; font-size: var(--text-sm); color: var(--color-muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
-.focus__pie .tabs { width: 100%; justify-content: space-between; }
+.focus__split > .focus__pie { align-content: start; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* A compact legend in the narrow column: the subject and its time; the ring shows the shares. */
+.focus__pie .legend { width: 100%; font-size: var(--text-sm); }
+.focus__pie .legend__row { grid-template-columns: 8px minmax(0, 1fr) auto; gap: var(--space-sm); padding: 6px 0; }
+.focus__pie .legend__swatch { width: 8px; height: 8px; }
+.focus__pie .legend__share { display: none; }
 
 /* ── Wrap-up sheet ──────────────────────────────────────────────────────── */
 
@@ -322,4 +332,57 @@
 @media (prefers-reduced-motion: reduce) {
   .stopwatch, .stopwatch[data-state="leaving"] { animation: none; }
   .stopwatch__sweep { transition: none; }
+}
+
+/* ── The + and the pour: the start form, poured over the panel ────────────
+   The + is a drop of the same liquid as the Goals adder. Pressed, it spills: its circle swells
+   past the far corner with a springy overshoot while two drops run ahead toward the bottom left,
+   all melted into one liquid by the goo filter; the form surfaces once it has covered the panel.
+   Closing drains it back into the +, which turns back from × to +. */
+.pour-plus {
+  position: relative; z-index: 7;
+  display: grid; place-items: center; flex: none;
+  width: 40px; height: 40px; padding: 0;
+  border: 0; border-radius: 50%;
+  background: var(--pour-liquid); color: var(--color-ink);
+  cursor: pointer;
+  transition: transform 420ms cubic-bezier(0.3, 1.4, 0.5, 1), color var(--dur-micro) var(--ease-out);
+}
+.pour-plus:hover { color: var(--color-light); }
+.pour-plus:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.pour-plus.is-open { transform: rotate(45deg); }
+
+.pour { position: absolute; inset: 0; z-index: 6; overflow: hidden; border-radius: inherit; }
+.pour__defs { position: absolute; width: 0; height: 0; }
+.pour__liquid { position: absolute; inset: 0; pointer-events: none; }
+.pour__liquid > span { position: absolute; left: var(--ox); top: var(--oy); border-radius: 50%; background: var(--pour-liquid); }
+/* The drops run out first; the body of liquid gathers slowly, then floods after them. */
+.pour__fill { width: 40px; height: 40px; margin: -20px 0 0 -20px; animation: pour-fill 820ms cubic-bezier(0.7, 0, 0.3, 1.04) 60ms both; }
+.pour__drop--a { width: 30px; height: 30px; margin: -15px 0 0 -15px; animation: pour-drop-a 420ms cubic-bezier(0.2, 0.9, 0.35, 1) both; }
+.pour__drop--b { width: 18px; height: 18px; margin: -9px 0 0 -9px; animation: pour-drop-b 520ms cubic-bezier(0.2, 0.9, 0.35, 1) 40ms both; }
+@keyframes pour-fill { from { transform: scale(1); } to { transform: scale(var(--grow)); } }
+@keyframes pour-drop-a { from { transform: translate(0, 0) scale(0.4); } to { transform: translate(calc(var(--dx) * 0.4), calc(var(--dy) * 0.42)) scale(1); } }
+@keyframes pour-drop-b { from { transform: translate(0, 0) scale(0.4); } to { transform: translate(calc(var(--dx) * 0.62), calc(var(--dy) * 0.7)) scale(1); } }
+.pour[data-state="closing"] .pour__fill { animation: pour-drain 420ms cubic-bezier(0.55, 0, 0.75, 0.3) both; }
+.pour[data-state="closing"] .pour__drop { display: none; }
+@keyframes pour-drain { from { transform: scale(var(--grow)); } to { transform: scale(1); } }
+
+.pour__body {
+  position: relative; z-index: 1;
+  display: grid; align-content: start; gap: var(--space-lg);
+  height: 100%; padding: var(--space-lg);
+  overflow-y: auto;
+  animation: pour-body-in 280ms var(--ease-out) 560ms both;
+}
+.pour[data-state="closing"] .pour__body { animation: pour-body-out 120ms ease both; }
+@keyframes pour-body-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes pour-body-out { to { opacity: 0; } }
+/* Where the panel's title was, level with the ×. */
+.pour__title { display: flex; align-items: center; min-height: 40px; margin-top: -6px; font: 500 1.0625rem/1.3 var(--font-display); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pour__fill, .pour[data-state="closing"] .pour__fill { animation: none; transform: scale(var(--grow)); }
+  .pour__drop { display: none; }
+  .pour__body, .pour[data-state="closing"] .pour__body { animation: none; }
+  .pour-plus { transition: none; }
 }

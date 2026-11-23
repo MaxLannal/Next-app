@@ -9,6 +9,7 @@ import {
   getGoal,
   insertGoal,
   listGoals,
+  rankGoals,
   updateGoal,
   type GoalEdit,
   type GoalStatus,
@@ -59,6 +60,18 @@ export function goalRoutes(ctx: AppContext): Hono {
 
   // Before `/:id` so the word is never read as an id.
   routes.get('/accuracy', (c) => c.json(estimateAccuracy(doneGoalPlans(ctx.db, ctx.timeZone()))));
+
+  // The open goals' ids in the order they were dragged into; answers with the list in that order.
+  routes.put('/order', async (c) => {
+    const { ids } = await jsonBody(c);
+    const valid =
+      Array.isArray(ids) &&
+      ids.every((id) => typeof id === 'number' && Number.isInteger(id) && id > 0) &&
+      new Set(ids).size === ids.length;
+    if (!valid || !rankGoals(ctx.db, ids as number[])) return c.json({ error: 'The order must name each open goal once' }, 400);
+    const { now, today, tz } = view();
+    return c.json(listGoals(ctx.db, 'open', today, tz, now));
+  });
 
   routes.post('/', async (c) => {
     const body = await jsonBody(c);

@@ -10,13 +10,19 @@ type StartFormProps = {
   actions: SessionActions;
   /** A session is already open, so nothing can start. */
   busy: boolean;
+  /** Put the cursor in Name as the form appears. */
+  autoFocus?: boolean;
+  /** The session started. */
+  onStarted?: () => void;
+  /** Esc: leave without starting. */
+  onCancel?: () => void;
 };
 
 /**
  * Name (needed), the subject it is about (pick one or type a new name), its
- * tags (comma or Enter makes a chip) and its goal. Enter starts.
+ * tags (comma or Enter makes a chip) and its goal. Enter starts; Esc leaves.
  */
-export function StartForm({ subjects, goals, actions, busy }: StartFormProps) {
+export function StartForm({ subjects, goals, actions, busy, autoFocus = false, onStarted, onCancel }: StartFormProps) {
   const id = useId();
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('');
@@ -64,6 +70,7 @@ export function StartForm({ subjects, goals, actions, busy }: StartFormProps) {
       setTags([]);
       setDraft('');
       setGoal('');
+      onStarted?.();
     } catch (err) {
       setError(err instanceof ApiError && err.status !== 0 ? err.message : 'Couldn’t start — retry');
     } finally {
@@ -79,6 +86,12 @@ export function StartForm({ subjects, goals, actions, busy }: StartFormProps) {
         e.preventDefault();
         void submit();
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && onCancel !== undefined && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
     >
       <div className="start__row">
         <label className="start__label" htmlFor={`${id}-name`}>
@@ -92,6 +105,7 @@ export function StartForm({ subjects, goals, actions, busy }: StartFormProps) {
             onChange={(e) => setName(e.target.value)}
             placeholder="What are you working on?"
             autoComplete="off"
+            autoFocus={autoFocus}
           />
           <button className="btn" type="submit" disabled={!ready}>
             Start
@@ -110,7 +124,7 @@ export function StartForm({ subjects, goals, actions, busy }: StartFormProps) {
             list={`${id}-subjects`}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            placeholder="Pick one or type a new name"
+            placeholder="Pick or type"
             autoComplete="off"
           />
           <datalist id={`${id}-subjects`}>

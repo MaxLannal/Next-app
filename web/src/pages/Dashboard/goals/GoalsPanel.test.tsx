@@ -281,6 +281,42 @@ describe('GoalsPanel', () => {
     await waitFor(() => expect(screen.getByText('Hours ×1.4 · Dates ×1.4 · 3 goals')).toBeTruthy());
     expect(screen.getByText('12 h of 10 h')).toBeTruthy();
   });
+
+  it('ranks goals from the grip with the arrow keys, and saves the order', async () => {
+    const goals = [goal({ id: 1, title: 'Mechanics' }), goal({ id: 2, title: 'Calculus' }), goal({ id: 3, title: 'CollegeDeck' })];
+    const orders: number[][] = [];
+    stubHub({
+      'GET /api/goals?status=open': () => json(goals),
+      'GET /api/goals?status=done': () => json([]),
+      'GET /api/goals/accuracy': () => json(NO_ACCURACY),
+      'PUT /api/goals/order': (init) => {
+        const { ids } = JSON.parse(String(init?.body)) as { ids: number[] };
+        orders.push(ids);
+        return json(ids.map((id) => goals.find((g) => g.id === id)));
+      },
+    });
+    renderPanel();
+    const titles = () =>
+      within(screen.getByRole('list', { name: 'Open goals' }))
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('.goal__title')?.textContent);
+
+    const grip = await screen.findByRole('button', { name: 'Move CollegeDeck' });
+    grip.focus();
+    fireEvent.keyDown(grip, { key: 'ArrowUp' });
+    await waitFor(() => expect(orders.at(-1)).toEqual([1, 3, 2]));
+    expect(titles()).toEqual(['Mechanics', 'CollegeDeck', 'Calculus']);
+    expect(screen.getByRole('status').textContent).toBe('CollegeDeck moved to 2 of 3');
+    // The grip keeps focus as its row moves, so the keys can go on.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Move CollegeDeck' }));
+
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+    await waitFor(() => expect(orders.at(-1)).toEqual([3, 1, 2]));
+    // Already first: nothing to move, nothing sent.
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+    expect(orders).toHaveLength(2);
+    expect(titles()).toEqual(['CollegeDeck', 'Mechanics', 'Calculus']);
+  });
 });
 
 describe('PlanPrompt', () => {

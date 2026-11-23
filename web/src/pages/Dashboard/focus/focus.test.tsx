@@ -36,6 +36,12 @@ function renderApp(ui: ReactNode) {
   );
 }
 
+/** The start form waits behind the Focus panel's +; open it. */
+async function openStart() {
+  fireEvent.click(await screen.findByRole('button', { name: 'New focus session' }));
+  await screen.findByRole('form', { name: 'Start a focus session' });
+}
+
 const STARTED = '2026-11-22T17:58:55.000Z'; // 65 s before 18:00 UTC
 
 const running: FocusSession = {
@@ -71,6 +77,7 @@ describe('StartForm', () => {
       'GET /api/stats/subjects?range=day': () => json([]),
     });
     renderApp(<FocusPanel />);
+    await openStart();
 
     const start = await screen.findByRole('button', { name: 'Start' });
     expect((start as HTMLButtonElement).disabled).toBe(true);
@@ -582,17 +589,53 @@ describe('FocusPanel history', () => {
       },
     });
     renderApp(<FocusPanel />);
+    await openStart();
 
     const start = await screen.findByRole('button', { name: 'Start' });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Read Lamport' } });
     await user.click(start);
 
+    // Started, the form drains away and the stopwatch takes the panel.
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Start a focus session' })).toBeNull());
     // The pill shows what the session is about: its subject, else its name.
     const pill = await screen.findByRole('group', { name: 'Focus: Distributed systems' });
     expect(pill.textContent).toContain('Distributed systems');
     expect(within(pill).getByRole('timer')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
+  });
+});
+
+describe('the Focus +', () => {
+  it('pours the start form over the panel; Esc or × drains it back into the +', async () => {
+    const user = userEvent.setup();
+    stubHub({
+      'GET /api/sessions/current': () => json(null),
+      'GET /api/subjects': () => json([]),
+      'GET /api/goals?status=open': () => json([]),
+      'GET /api/sessions?limit=7': () => json([]),
+      'GET /api/stats/subjects?range=day': () => json([]),
+    });
+    renderApp(<FocusPanel />);
+    const startForm = () => screen.queryByRole('form', { name: 'Start a focus session' });
+
+    const plus = await screen.findByRole('button', { name: 'New focus session' });
+    expect(startForm()).toBeNull();
+    expect(plus.getAttribute('aria-expanded')).toBe('false');
+
+    await user.click(plus);
+    expect(await screen.findByRole('form', { name: 'Start a focus session' })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByLabelText('Name'));
+    expect(screen.getByRole('button', { name: 'Close the new session' }).getAttribute('aria-expanded')).toBe('true');
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(startForm()).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New focus session' }));
+
+    await user.click(screen.getByRole('button', { name: 'New focus session' }));
+    await screen.findByRole('form', { name: 'Start a focus session' });
+    await user.click(screen.getByRole('button', { name: 'Close the new session' }));
+    await waitFor(() => expect(startForm()).toBeNull());
   });
 });
 
@@ -606,6 +649,7 @@ describe('FocusPanel goals', () => {
       'GET /api/stats/subjects?range=day': () => json([]),
     });
     renderApp(<FocusPanel />);
+    await openStart();
 
     await screen.findByRole('button', { name: 'Start' });
     await waitFor(() => expect(screen.queryByLabelText('Goal')).toBeNull());
@@ -623,6 +667,7 @@ describe('FocusPanel goals', () => {
       'GET /api/stats/subjects?range=day': () => json([]),
     });
     renderApp(<FocusPanel />);
+    await openStart();
 
     // Never silently hidden: the line says what failed, and offers the one step.
     expect(await screen.findByText('Couldn’t load goals —', { exact: false })).toBeTruthy();
@@ -667,6 +712,7 @@ describe('FocusPanel goals', () => {
       },
     });
     renderApp(<FocusPanel />);
+    await openStart();
 
     const goal = await screen.findByLabelText('Goal');
     await waitFor(() => expect(within(goal).queryByRole('option', { name: 'Finish ch. 4' })).toBeTruthy());
@@ -694,6 +740,7 @@ describe('StartForm chips', () => {
       },
     });
     renderApp(<FocusPanel />);
+    await openStart();
 
     await screen.findByRole('button', { name: 'Start' });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Read Lamport' } });

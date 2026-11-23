@@ -20,9 +20,13 @@
 .goal-plan__hint { font-size: var(--text-xs); color: var(--color-accent-2); }
 .goal-plan__acts { display: flex; gap: var(--space-xs); margin-left: auto; }
 
+/* The body scrolls inside the panel, which keeps one height beside Focus. It reaches into the
+   panel's padding so the grips in the left gutter aren't clipped. */
+.goals__body { flex: 1; min-height: 0; margin-inline: calc(-1 * var(--space-lg)); padding-inline: var(--space-lg); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+
 /* Rows: title and figures on the left, Done and ⋯ on the right. */
 .goal-list { list-style: none; margin: 0; padding: 0; }
-.goal { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-sm) var(--space-md); padding: var(--space-md) 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); }
+.goal { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-sm) var(--space-md); padding: 12px 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); transition: transform 220ms var(--ease-out); }
 .goal:first-child { border-top: 0; }
 .goal-list--done .goal { border-top: 0; padding: var(--space-sm) 0; }
 
@@ -47,10 +51,40 @@
 .goal__more { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--color-muted); font-size: 1.125rem; line-height: 1; cursor: pointer; transition: background-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
 .goal__more:hover, .goal__more[aria-expanded="true"] { background: color-mix(in oklab, var(--color-light) 7%, transparent); color: var(--color-ink); }
 
+/* Ranking: a mouse grabs a row anywhere but its controls; the grip in the left gutter (shown on
+   hover, always on touch) takes a finger or the arrow keys. The lifted row is smoked glass with a
+   shadow, and the rows it passes slide aside for it. */
+.goal-list:not(.goal-list--done) .goal__main { cursor: grab; }
+.goal__grip {
+  position: absolute; top: 50%; left: calc(-1 * var(--space-lg) + 3px);
+  display: grid; place-items: center;
+  width: 18px; height: 30px; margin-top: -15px; padding: 0;
+  border: 0; border-radius: 6px; background: none; color: var(--color-muted);
+  cursor: grab; touch-action: none;
+  opacity: 0; transition: opacity var(--dur-short) var(--ease-out), color var(--dur-micro) var(--ease-out);
+}
+.goal:hover .goal__grip, .goal__grip:focus-visible, .goal.is-dragging .goal__grip { opacity: 1; }
+.goal__grip:hover { color: var(--color-ink); }
+.goal__grip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 0; }
+@media (hover: none) { .goal__grip { opacity: 0.6; } }
+
+.goal-list.is-ranking { user-select: none; -webkit-user-select: none; }
+.goal-list.is-ranking .goal, .goal-list.is-dropped .goal { animation: none; }
+.goal-list.is-dropped .goal { transition: none; }
+.goal.is-dragging {
+  z-index: 2; cursor: grabbing;
+  margin-inline: calc(-1 * var(--space-sm)); padding-inline: var(--space-sm);
+  border-top-color: transparent; border-radius: var(--radius-inner);
+  background: var(--color-paper-2);
+  box-shadow: var(--glass-hi), 0 18px 40px -18px oklch(8% 0.02 268 / 0.85);
+}
+.goal.is-dragging .goal__main { cursor: grabbing; }
+
 /* Motion stops under reduced motion, like every Dusk surface. */
 @media (prefers-reduced-motion: reduce) {
   .goal__menu { animation: none; }
   .goal__fill { transition: none; }
+  .goal { transition: none; }
 }
 
 /* The menu is the one raised surface over the panel: smoked glass with its lit edge, not glass on glass. */

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEventHandler } from 'react';
 import type { Goal } from '@shared/types.ts';
 import { formatDayShort, formatHours, formatShortDate } from '../../../lib/format.ts';
 import { PlanPrompt } from './PlanPrompt.tsx';
@@ -6,11 +6,28 @@ import { PlanPrompt } from './PlanPrompt.tsx';
 export type GoalEdit = { title?: string; deadline?: string | null; plannedMinutes?: number | null; status?: Goal['status'] };
 type Mode = 'view' | 'rename' | 'replan' | 'confirm' | 'menu';
 
+/** What an open row needs to be ranked: dragged by pointer, or moved by its grip's arrow keys. */
+export type GoalRank = {
+  handlers: {
+    onPointerDown: PointerEventHandler<HTMLElement>;
+    onPointerMove: PointerEventHandler<HTMLElement>;
+    onPointerUp: PointerEventHandler<HTMLElement>;
+    onPointerCancel: PointerEventHandler<HTMLElement>;
+  };
+  style: CSSProperties | undefined;
+  dragging: boolean;
+  onGripKey: (e: KeyboardEvent<HTMLButtonElement>) => void;
+  /** The id of the line saying how to rank. */
+  hintId: string;
+};
+
 type GoalRowProps = {
   goal: Goal;
   index: number;
   /** Done rows show what it took against the original plan, not the live bar. */
   done?: boolean;
+  /** Open rows can be ranked. */
+  rank?: GoalRank;
   onUpdate: (id: number, edit: GoalEdit) => Promise<boolean>;
   onRemove: (id: number) => Promise<void>;
 };
@@ -33,7 +50,7 @@ export function planLine(goal: Goal): string {
   return goal.plannedMinutes === null ? `${focused} focused` : `${focused} / ${hours(goal.plannedMinutes * 60)}`;
 }
 
-export function GoalRow({ goal, index, done = false, onUpdate, onRemove }: GoalRowProps) {
+export function GoalRow({ goal, index, done = false, rank, onUpdate, onRemove }: GoalRowProps) {
   const titleId = useId();
   const [mode, setMode] = useState<Mode>('view');
   const [busy, setBusy] = useState(false);
@@ -59,12 +76,14 @@ export function GoalRow({ goal, index, done = false, onUpdate, onRemove }: GoalR
     }
   };
 
-  const style = { '--d': Math.min(index, 8) } as CSSProperties;
+  const style = { '--d': Math.min(index, 8), ...rank?.style } as CSSProperties;
   const { progress } = goal;
   const line = finishLine(goal);
   const barLabel = progress.fractionKind === 'time' ? 'Time elapsed' : 'Work done';
   const fraction = progress.fraction ?? 0;
-  const classes = ['goal', 'rise', done ? 'is-done' : '', progress.atRisk && !done ? 'is-risk' : ''].filter(Boolean).join(' ');
+  const classes = ['goal', 'rise', done ? 'is-done' : '', progress.atRisk && !done ? 'is-risk' : '', rank?.dragging ? 'is-dragging' : '']
+    .filter(Boolean)
+    .join(' ');
   const plannedSeconds = goal.plannedMinutes === null ? null : goal.plannedMinutes * 60;
 
   const tick = (e: { key: string; preventDefault: () => void }, close: () => void) => {
@@ -75,7 +94,19 @@ export function GoalRow({ goal, index, done = false, onUpdate, onRemove }: GoalR
   };
 
   return (
-    <li className={classes} style={style} aria-labelledby={titleId}>
+    <li className={classes} style={style} aria-labelledby={titleId} {...rank?.handlers}>
+      {rank !== undefined && (
+        <button className="goal__grip" type="button" data-grip={goal.id} aria-label={`Move ${goal.title}`} aria-describedby={rank.hintId} onKeyDown={rank.onGripKey}>
+          <svg viewBox="0 0 10 16" width="10" height="16" fill="currentColor" aria-hidden="true">
+            <circle cx="2.5" cy="3" r="1.4" />
+            <circle cx="7.5" cy="3" r="1.4" />
+            <circle cx="2.5" cy="8" r="1.4" />
+            <circle cx="7.5" cy="8" r="1.4" />
+            <circle cx="2.5" cy="13" r="1.4" />
+            <circle cx="7.5" cy="13" r="1.4" />
+          </svg>
+        </button>
+      )}
       <div className="goal__main">
         {mode === 'rename' ? (
           <form
