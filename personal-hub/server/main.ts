@@ -10,6 +10,7 @@ import { startHeartbeat } from './services/heartbeat.ts';
 import { createJobQueue } from './services/jobs.ts';
 import { createMacBridge } from './services/mac.ts';
 import { createClaudeClient } from './services/claude.ts';
+import { startRoutines } from './services/routines.ts';
 import { registerVision } from './services/vision.ts';
 
 const PULL_EVERY_MS = 2 * 60_000;
@@ -35,6 +36,8 @@ hookAttachmentPushes(ctx);
 
 // Runs once at boot, which catches a server that was down, then every minute.
 startHeartbeat(ctx);
+// Stays awake if Settings says so, and backs the database up at boot and every 24 hours.
+startRoutines(ctx);
 // Claude goes through the gateway setup has saved before boot (Setup runs first);
 // a reading failure is marked on the photo, so running without it is safe. A
 // gateway changed after boot needs a restart.

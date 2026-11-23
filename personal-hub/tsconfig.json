@@ -12,5 +12,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["server", "shared", "vitest.config.ts", "web/vite.config.ts", "web/vite.config.test.ts"]
+  "include": ["server", "shared", "scripts", "vitest.config.ts", "web/vite.config.ts", "web/vite.config.test.ts"]
 }

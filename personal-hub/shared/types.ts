@@ -189,3 +189,26 @@ export type HeatmapStats = {
 
 /** `GET /api/media/status`: ready, the helper lacks Accessibility, or it isn't built. */
 export type MediaStatus = 'ready' | 'no-accessibility' | 'missing';
+
+// --- Task 21 ---
+
+/** `GET /api/settings`. `hubToken` arrives only when asked from this Mac. */
+export type SettingsView = {
+  hasPasscode: boolean;
+  keepAwake: boolean;
+  timeZone: string;
+  sleepTargetHours: number;
+  dataDir: string;
+  /** The Shortcut's URL; '' when the Mac is on no network. */
+  ingestUrl: string;
+  /** The address in `ingestUrl`, and whether Tailscale answered (else the first local IPv4). */
+  ingestHost: string | null;
+  tailscale: boolean;
+  hubToken?: string;
+  github: GitStatus;
+  calendar: 'granted' | 'denied' | 'missing';
+  media: MediaStatus;
+  model: string;
+  /** The newest backup's day key, or null before the first backup. */
+  lastBackupAt: string | null;
+};
