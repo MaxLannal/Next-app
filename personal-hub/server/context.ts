@@ -5,6 +5,7 @@ import type { CalendarEvent, GitStatus, ImageReading, NowPlaying } from '../shar
 import type { ConfigStore } from './config.ts';
 import type { HubPaths } from './paths.ts';
 import type { JobQueue } from './services/jobs.ts';
+import type { Run } from './services/mac.ts';
 
 /** A service the hub can't reach right now (not set up, no permission, gateway down). */
 export class UnavailableError extends Error {
@@ -50,6 +51,8 @@ export type AppContext = {
   claude: ClaudeClient;
   mac: MacBridge;
   git: GitSync;
+  /** How the hub runs commands (`tailscale ip -4` for the phone address); the Mac bridge's own by default. */
+  run?: Run;
 };
 
 // Stand-ins for services that aren't set up. Each method fails with UnavailableError,

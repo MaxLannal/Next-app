@@ -72,3 +72,10 @@ export function instantAt(day: string, time: string): Date | null {
   if (hours > 23 || minutes > 59) return null;
   return new Date(Number(key[1]), Number(key[2]) - 1, Number(key[3]), hours, minutes);
 }
+
+/** `"22 Nov 2026"`. A day key (`2026-11-22`) is that calendar day; an instant is its local day. */
+export function formatDayKey(dayKeyOrIso: string): string {
+  const key = DAY_KEY.exec(dayKeyOrIso);
+  const d = key ? new Date(Number(key[1]), Number(key[2]) - 1, Number(key[3])) : new Date(dayKeyOrIso);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}

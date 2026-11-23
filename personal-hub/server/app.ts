@@ -12,6 +12,7 @@ import { calendarRoutes } from './routes/calendar.ts';
 import { exerciseRoutes } from './routes/exercise.ts';
 import { essayImageRoutes, essayRoutes } from './routes/essays.ts';
 import { githubRoutes } from './routes/github.ts';
+import { settingsRoutes } from './routes/settings.ts';
 import { sessionRoutes } from './routes/sessions.ts';
 import { statsRoutes } from './routes/stats.ts';
 import { mediaRoutes } from './routes/media.ts';
@@ -39,6 +40,7 @@ export function createApp(ctx: AppContext): Hono {
   app.route('/api/github', githubRoutes(ctx));
   app.route('/api/ingest', sleepIngestRoutes(ctx));
   app.route('/api/sleep', sleepRoutes(ctx));
+  app.route('/api/settings', settingsRoutes(ctx));
 
   app.use('*', webApp(WEB_DIST));
   return app;

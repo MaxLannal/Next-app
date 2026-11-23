@@ -66,6 +66,17 @@ export function createConfigStore(file: string): ConfigStore {
   };
 }
 
+/** The configured gateway settings, as the file holds them (null before setup writes them). */
+export function anthropicSettings(file: string): { baseURL: string | null; authToken: string | null; model: string } {
+  const raw = existsSync(file) ? readFileSync(file, 'utf8') : '{}';
+  const anthropic = (merge({}, parse(file, raw)) as DeepPartial<HubConfig>).anthropic ?? {};
+  return {
+    baseURL: typeof anthropic.baseURL === 'string' && anthropic.baseURL !== '' ? anthropic.baseURL : null,
+    authToken: typeof anthropic.authToken === 'string' && anthropic.authToken !== '' ? anthropic.authToken : null,
+    model: typeof anthropic.model === 'string' && anthropic.model !== '' ? anthropic.model : 'claude-opus-5-5',
+  };
+}
+
 /** The hub's time zone: the configured one, else the Mac's. */
 export function hubTimeZone(cfg: HubConfig): string {
   return cfg.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;

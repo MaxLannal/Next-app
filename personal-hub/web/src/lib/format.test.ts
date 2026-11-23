@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatClock, formatDuration, formatShare, formatShortDate, formatTime, sizeOf } from './format.ts';
+import { formatClock, formatDayKey, formatDuration, formatShare, formatShortDate, formatTime, sizeOf } from './format.ts';
 
 describe('formatDuration', () => {
   it('shows minutes under an hour and hours with minutes above', () => {
@@ -53,5 +53,12 @@ describe('sizeOf', () => {
     expect(sizeOf(1024)).toBe('1 KB');
     expect(sizeOf(14_336)).toBe('14 KB');
     expect(sizeOf(1_468_006)).toBe('1.4 MB');
+  });
+});
+
+describe('formatDayKey', () => {
+  it('shows the day, short month and year', () => {
+    expect(formatDayKey('2026-11-22')).toBe('22 Nov 2026');
+    expect(formatDayKey(new Date(2026, 0, 3, 23, 30).toISOString())).toBe('3 Jan 2026');
   });
 });
