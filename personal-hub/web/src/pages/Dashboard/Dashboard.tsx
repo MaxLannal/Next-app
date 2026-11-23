@@ -12,14 +12,15 @@ import { SleepPanel } from './sleep/SleepPanel.tsx';
 import { FocusPanel } from './focus/FocusPanel.tsx';
 import { GoalsPanel } from './goals/GoalsPanel.tsx';
 
-/** Grid areas below the hero. Each later task puts its panel into its slot. */
+/** Grid areas: goals and focus sit on the painting, the rest on slate below it. */
 type SlotId = 'goals' | 'focus' | 'heatmap' | 'sleep' | 'exercise' | 'calendar' | 'resources' | 'media';
 
 const PHOTO_SOURCE = 'https://commons.wikimedia.org/wiki/File:Vallee-brouillard.jpg';
 
 /**
- * The fog-valley hero (time on the pale fog, today's agenda in glass on the
- * dark side), then the panels on slate in two columns, one under 900px.
+ * The fog-valley hero: time on the pale fog, today's agenda in glass on the
+ * dark side, and Goals and Focus in glass on the painting below them. Then the
+ * slate, opening with the year of focus; two columns, one under 900px.
  */
 export function Dashboard() {
   reserveForTimer();
@@ -34,16 +35,18 @@ export function Dashboard() {
           <div id="hero-time" className="hero__time"><TimePanel /></div>
           <div id="hero-agenda" className="hero__agenda"><TodayAgenda /></div>
         </div>
-      </section>
-
-      <div className="container slate">
-        <div className="slate__grid">
+        <div className="container hero__panels">
           <Slot id="goals">
             <GoalsPanel />
           </Slot>
           <Slot id="focus">
             <FocusPanel />
           </Slot>
+        </div>
+      </section>
+
+      <div className="container slate">
+        <div className="slate__grid">
           <Slot id="heatmap">
             <YearOfFocusPanel />
           </Slot>
