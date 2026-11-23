@@ -23,6 +23,16 @@ describe('the side rail', () => {
     }
   });
 
+  it('wears the Next logo at the top, linking home', () => {
+    renderAt('/settings');
+    const mark = screen.getByRole('link', { name: 'Next, dashboard' }).querySelector('img');
+    expect(mark?.getAttribute('alt')).toBe('');
+    const src = mark?.getAttribute('src') ?? '';
+    expect(src.startsWith('data:image/svg+xml,')).toBe(true);
+    // The tile alone, not the app icon's canvas.
+    expect(decodeURIComponent(src)).toContain('viewBox="100 100 824 824"');
+  });
+
   it('marks only the page you are on', () => {
     renderAt('/essays/12');
     const current = screen.getAllByRole('link').filter((a) => a.getAttribute('aria-current') === 'page');

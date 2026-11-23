@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { appIconSvg, sweepGrey } from './app-icon.ts';
+import { nextMarkSvg, sweepGrey } from '../shared/next-mark.ts';
+import { appIconSvg } from './app-icon.ts';
+
+const tileCorner = (svg: string) => /<clipPath id="tile"><rect [^>]*rx="([\d.]+)"/.exec(svg)?.[1];
 
 describe('appIconSvg', () => {
   const svg = appIconSvg();
@@ -14,6 +17,10 @@ describe('appIconSvg', () => {
     expect(svg.match(/<path d="M512 512L/g)).toHaveLength(360);
   });
 
+  it("keeps Apple's icon corner, so macOS shows it as it is", () => {
+    expect(tileCorner(svg)).toBe('185.4');
+  });
+
   it('draws the ribbon point-symmetric about the centre', () => {
     const d = /<path d="(M [^"]+)" fill="none" stroke="url\(#ribbon\)"/.exec(svg)?.[1] ?? '';
     const numbers = d.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
@@ -21,6 +28,15 @@ describe('appIconSvg', () => {
     const [endX, endY] = numbers.slice(-2);
     expect(startX! + endX!).toBeCloseTo(1024, 1);
     expect(startY! + endY!).toBeCloseTo(1024, 1);
+  });
+});
+
+describe('nextMarkSvg', () => {
+  it("draws the rail's mark as the tile alone, with the drawing's rounder corner and a coarser sweep", () => {
+    const svg = nextMarkSvg({ sweepStep: 3 });
+    expect(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="824" height="824" viewBox="100 100 824 824">')).toBe(true);
+    expect(tileCorner(svg)).toBe('261.13');
+    expect(svg.match(/<path d="M512 512L/g)).toHaveLength(120);
   });
 });
 

@@ -52,10 +52,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .join:focus-within { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
 .join .btn { min-height: 46px; }
 
-/* The dusk mark: a disc from the last of the sun to the first of the night. */
-.wordmark { display: inline-flex; align-items: center; gap: 12px; font: 600 1.125rem/1 var(--font-display); letter-spacing: -0.01em; text-decoration: none; justify-self: start; }
-.wordmark__dot { flex: none; width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--color-accent-2), var(--color-dusk) 55%, var(--color-accent) 100%); box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-light) 18%, transparent) inset; }
-
 /* ── Hero: the hour behind the head, the product in glass beside it ────── */
 .hero { position: relative; display: grid; align-content: center; min-height: clamp(620px, 86svh, 960px); isolation: isolate; }
 /* The photograph clips itself, so menus in the panels on it can still open past the hero. */
@@ -144,7 +140,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .hero__panels { grid-template-columns: minmax(0, 1fr); grid-template-areas: "goals" "focus"; padding-bottom: 0; }
 }
 @media (max-width: 40rem) {
-  .wordmark { gap: var(--space-sm); font-size: 1rem; }
   .panel { padding: var(--space-md); }
   .sheet-backdrop { place-items: end stretch; padding: var(--space-xl) 0 0; }
   .sheet { width: 100%; max-height: calc(100svh - var(--space-xl)); border-radius: var(--radius-card) var(--radius-card) 0 0; padding-bottom: calc(var(--space-lg) + env(safe-area-inset-bottom)); }

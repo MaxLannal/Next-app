@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink } from 'react-router';
+import { nextMarkSvg } from '@shared/next-mark.ts';
 import './Nav.css';
+
+/**
+ * The Next logo, drawn once. As an image its gradients and clips keep their ids to themselves; its
+ * plate is shaded in 3° steps, which at this size reads as smooth as the app icon's 1°.
+ */
+const MARK = `data:image/svg+xml,${encodeURIComponent(nextMarkSvg({ sweepStep: 3 }))}`;
 
 type NavProps = {
   /** The running-timer pill, shown on every page while a session is active. */
@@ -8,7 +15,7 @@ type NavProps = {
 };
 
 /**
- * The side rail: the dusk mark, one icon per page, and Settings at the foot. The page you're on
+ * The side rail: the Next logo, one icon per page, and Settings at the foot. The page you're on
  * wears a pill that runs to the rail's edge, with the periwinkle dot that means "on". Each icon
  * names itself on hover and focus. Under 700px the rail becomes a bar along the bottom.
  */
@@ -16,7 +23,7 @@ export function Nav({ timerSlot }: NavProps) {
   return (
     <aside className="rail">
       <Link className="rail__brand" to="/" aria-label="Next, dashboard">
-        <span className="wordmark__dot" aria-hidden="true" />
+        <img className="rail__mark" src={MARK} alt="" draggable={false} />
       </Link>
       <nav className="rail__links" aria-label="Main">
         <RailLink to="/" end label="Dashboard" icon={<GaugeIcon />} />
