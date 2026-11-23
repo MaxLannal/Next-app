@@ -2,10 +2,11 @@ import { serve } from '@hono/node-server';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { createApp } from './app.ts';
 import { createConfigStore, hubTimeZone } from './config.ts';
-import { unavailableClaude, unavailableGit, unavailableMac, type AppContext } from './context.ts';
+import { unavailableClaude, unavailableGit, type AppContext } from './context.ts';
 import { openDb } from './db/index.ts';
 import { defaultDataDir, hubPaths } from './paths.ts';
 import { createJobQueue } from './services/jobs.ts';
+import { createMacBridge } from './services/mac.ts';
 
 const paths = hubPaths(defaultDataDir());
 const config = createConfigStore(paths.configFile);
@@ -19,7 +20,7 @@ const ctx: AppContext = {
   remoteAddress: (c) => getConnInfo(c).remote.address ?? '',
   jobs: createJobQueue(),
   claude: unavailableClaude,
-  mac: unavailableMac,
+  mac: createMacBridge(paths),
   git: unavailableGit,
 };
 

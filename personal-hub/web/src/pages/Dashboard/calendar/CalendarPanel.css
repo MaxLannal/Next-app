@@ -1,0 +1,50 @@
+/* The calendar panel on slate glass: a month grid of quiet day cells with a dot
+   per event in its calendar's colour, and ruled event rows (Hallmark's Dusk
+   .acct rows, labels muted and a step smaller, ghost pills for stepping). */
+
+.cal__bar { display: flex; align-items: center; gap: var(--space-sm); padding-bottom: var(--space-md); }
+.cal__range { margin-right: auto; font: 500 1rem/1.3 var(--font-display); font-variant-numeric: tabular-nums; }
+.cal__step { width: 38px; padding: 0; }
+
+/* Month grid */
+.month__head, .month__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.month__head { padding-bottom: var(--space-sm); font-size: var(--text-xs); font-weight: 500; color: var(--color-muted); text-align: center; }
+.month__grid { gap: 2px; }
+.month__day { display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 52px; padding: 6px 0; border: 0; border-radius: var(--radius-inner); background: none; color: var(--color-ink-2); cursor: pointer; transition: background-color var(--dur-short) var(--ease-out), box-shadow var(--dur-short) var(--ease-out); }
+.month__day:hover { background: color-mix(in oklab, var(--color-light) 5%, transparent); }
+.month__day.is-outside { color: color-mix(in oklab, var(--color-muted) 70%, transparent); }
+.month__day[aria-pressed="true"] { background: color-mix(in oklab, var(--color-light) 8%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 14%, transparent); color: var(--color-ink); }
+.month__day.is-today .month__n { color: var(--color-accent); font-weight: 600; }
+.month__day:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.month__n { font-size: 0.9375rem; line-height: 1; }
+.month__dots { display: flex; gap: 3px; height: 5px; }
+.month__dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--dot); }
+
+/* The chosen day, and the week, as ruled rows */
+.cal__day { padding-top: var(--space-lg); }
+.cal__label { padding-bottom: var(--space-sm); font: 500 var(--text-sm)/1.4 var(--font-body); font-variant-numeric: tabular-nums; letter-spacing: normal; color: var(--color-muted); }
+.cal__week { display: grid; }
+.cal__group:not(.is-empty) { padding-top: var(--space-md); }
+.cal__group:not(.is-empty):first-child { padding-top: 0; }
+.cal__group.is-today .cal__label { color: var(--color-ink); }
+.cal__group.is-today .cal__label::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: var(--space-sm); border-radius: 50%; background: var(--color-accent); vertical-align: 0.15em; box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-accent) 20%, transparent); }
+.cal__none { padding: 12px 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); font-size: var(--text-sm); color: var(--color-muted); }
+/* A free day in the week is one ruled line: its date, then "Nothing on". */
+.cal__group.is-empty { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); padding: 12px 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); }
+.cal__group.is-empty .cal__label, .cal__group.is-empty .cal__none { padding: 0; border: 0; }
+
+.cal__events { list-style: none; margin: 0; padding: 0; }
+.cal__event { display: grid; grid-template-columns: 4.5rem 8px minmax(0, 1fr) auto; align-items: center; gap: var(--space-md); width: 100%; min-height: 52px; padding: 12px var(--space-sm) 12px 0; border: 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); background: none; text-align: left; cursor: pointer; transition: background-color var(--dur-short) var(--ease-out); }
+.cal__event:hover { background: color-mix(in oklab, var(--color-light) 4%, transparent); }
+.cal__event:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; border-radius: 4px; }
+.cal__time { font-size: 0.9375rem; color: var(--color-ink-2); white-space: nowrap; }
+.cal__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 0 3px color-mix(in oklab, var(--dot) 22%, transparent); }
+.cal__name { overflow: hidden; font-size: 0.9375rem; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.cal__note { margin-top: var(--space-md); font-size: var(--text-xs); color: var(--color-muted); }
+.cal__where { max-width: 12rem; overflow: hidden; font-size: var(--text-xs); color: var(--color-muted); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 40rem) {
+  .month__day { min-height: 44px; }
+  .cal__event { grid-template-columns: 3.75rem 8px minmax(0, 1fr); row-gap: 2px; }
+  .cal__where { grid-column: 3; max-width: none; text-align: left; }
+}
