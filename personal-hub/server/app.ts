@@ -8,6 +8,7 @@ import type { AppContext } from './context.ts';
 import { resourceRoutes } from './routes/resources.ts';
 import { attachmentRoutes } from './routes/attachments.ts';
 import { searchRoutes } from './routes/search.ts';
+import { essayImageRoutes, essayRoutes } from './routes/essays.ts';
 
 const WEB_DIST = fileURLToPath(new URL('../web/dist', import.meta.url));
 
@@ -21,6 +22,8 @@ export function createApp(ctx: AppContext): Hono {
   app.route('/api/resources', resourceRoutes(ctx));
   app.route('/api/attachments', attachmentRoutes(ctx));
   app.route('/api/search', searchRoutes(ctx));
+  app.route('/api/essays', essayRoutes(ctx));
+  app.route('/api/essay-images', essayImageRoutes(ctx));
 
   app.use('*', webApp(WEB_DIST));
   return app;

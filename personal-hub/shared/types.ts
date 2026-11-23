@@ -99,3 +99,22 @@ export type SearchHit = {
 
 /** One timer change. A session is stored as these events, so queued ones can be replayed later. */
 export type SessionEvent = { type: 'start' | 'pause' | 'resume' | 'stop'; at: string };
+
+// --- Task 16 ---
+
+/** The three essays columns, in page order. */
+export type EssayColumn = 'meditations' | 'plans' | 'insights';
+
+/** An essay in the column list. `firstLine` is its first non-empty line of text. */
+export type EssaySummary = {
+  id: number;
+  column: EssayColumn;
+  title: string;
+  firstLine: string;
+  wordCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** One essay, with its document. */
+export type Essay = EssaySummary & { contentJson: unknown };
