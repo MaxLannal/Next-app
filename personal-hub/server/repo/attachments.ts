@@ -31,7 +31,13 @@ export type CreateAttachmentInput = {
   notify?: boolean;
 };
 
-export type AttachmentFilter = { sessionId?: number; unfiled?: boolean; source?: Attachment['source'] };
+/** `sessionIds` is several sessions in one read (the Database's thumbnail strips); an empty list matches nothing. */
+export type AttachmentFilter = {
+  sessionId?: number;
+  sessionIds?: number[];
+  unfiled?: boolean;
+  source?: Attachment['source'];
+};
 
 type AttachmentRow = {
   id: number;
@@ -119,6 +125,11 @@ export function listAttachments(ctx: AppContext, filter: AttachmentFilter = {}):
   if (filter.sessionId !== undefined) {
     where.push('session_id = ?');
     params.push(filter.sessionId);
+  }
+  if (filter.sessionIds !== undefined) {
+    if (filter.sessionIds.length === 0) return [];
+    where.push(`session_id IN (${filter.sessionIds.map(() => '?').join(', ')})`);
+    params.push(...filter.sessionIds);
   }
   if (filter.unfiled) where.push('session_id IS NULL');
   if (filter.source !== undefined) {

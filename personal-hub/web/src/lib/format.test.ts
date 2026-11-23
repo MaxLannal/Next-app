@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatClock, formatDuration, formatShare, formatShortDate, formatTime } from './format.ts';
+import { formatClock, formatDuration, formatShare, formatShortDate, formatTime, sizeOf } from './format.ts';
 
 describe('formatDuration', () => {
   it('shows minutes under an hour and hours with minutes above', () => {
@@ -43,5 +43,15 @@ describe('formatShortDate', () => {
 
   it('reads an instant as its local day', () => {
     expect(formatShortDate(new Date(2026, 10, 3, 23, 30).toISOString())).toBe('Tue 3 Nov');
+  });
+});
+
+describe('sizeOf', () => {
+  it('shows bytes, whole kilobytes and one-decimal megabytes', () => {
+    expect(sizeOf(0)).toBe('0 B');
+    expect(sizeOf(812)).toBe('812 B');
+    expect(sizeOf(1024)).toBe('1 KB');
+    expect(sizeOf(14_336)).toBe('14 KB');
+    expect(sizeOf(1_468_006)).toBe('1.4 MB');
   });
 });

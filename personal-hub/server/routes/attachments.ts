@@ -73,12 +73,21 @@ export function attachmentRoutes(ctx: AppContext): Hono {
   );
 
   routes.get('/', (c) => {
-    const { sessionId, unfiled, source } = c.req.query();
+    const { sessionId, sessionIds, unfiled, source } = c.req.query();
     const filter: AttachmentFilter = { unfiled: unfiled === '1' };
     if (sessionId !== undefined) {
       const id = parseId(sessionId);
       if (id === null) return c.json({ error: 'Bad sessionId' }, 400);
       filter.sessionId = id;
+    }
+    if (sessionIds !== undefined) {
+      const ids = sessionIds
+        .split(',')
+        .map((part) => part.trim())
+        .filter((part) => part !== '');
+      const parsed = ids.map(parseId);
+      if (parsed.some((id) => id === null)) return c.json({ error: 'Bad sessionIds' }, 400);
+      filter.sessionIds = parsed as number[];
     }
     if (source !== undefined) {
       if (source !== 'upload' && source !== 'github') return c.json({ error: 'Bad source' }, 400);

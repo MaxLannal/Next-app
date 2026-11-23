@@ -1,6 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
-import type { FocusSession, SessionEvent, SessionFilters, Subject } from '../../shared/types.ts';
-import { clip, dayStart, focusIntervals, focusSeconds, splitByDay } from '../lib/time.ts';
+import type { FocusSession, SearchHit, SessionEvent, SessionFilters, Subject } from '../../shared/types.ts';
+import { search } from '../lib/search.ts';
+import { addDays, clip, dayKey, dayStart, focusIntervals, focusSeconds, splitByDay } from '../lib/time.ts';
 
 type SessionRow = {
   id: number;
@@ -125,7 +126,12 @@ export function getSession(db: DatabaseSync, id: number, now: Date): FocusSessio
 
 /**
  * Newest first, by start. The day bounds are `[fromDay, toDayExclusive)` over the session's
- * start in the hub time zone (`tz` defaults to UTC). `kind`, `source` and `q` arrive in Task 18.
+ * start in the hub time zone (`tz` defaults to UTC).
+ *
+ * `kind` keeps sessions holding a file of that type; `source` keeps those holding one from
+ * that place. `q` runs the full-text search and keeps the sessions its hits name: a session
+ * hit, the session holding an attachment hit, or the sessions on a day an essay hit falls on
+ * (an essay has no session, so the sessions around it stand for it).
  */
 export function listSessions(db: DatabaseSync, f: SessionFilters, now: Date, tz = 'UTC'): FocusSession[] {
   const where: string[] = [];
@@ -152,6 +158,19 @@ export function listSessions(db: DatabaseSync, f: SessionFilters, now: Date, tz 
     );
     params.push(f.tag);
   }
+  if (f.kind !== undefined) {
+    where.push('id IN (SELECT session_id FROM attachments WHERE kind = ?)');
+    params.push(f.kind);
+  }
+  if (f.source !== undefined) {
+    where.push('id IN (SELECT session_id FROM attachments WHERE source = ?)');
+    params.push(f.source);
+  }
+  if (f.q !== undefined && f.q.trim() !== '') {
+    const hits = sessionsForHits(db, search(db, f.q, SEARCH_LIMIT), tz, f.from, f.to);
+    where.push(hits.sql);
+    params.push(...hits.params);
+  }
   const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   let sql = `SELECT id FROM focus_sessions ${clause} ORDER BY started_at DESC, id DESC`;
   if (f.limit !== undefined) {
@@ -163,6 +182,61 @@ export function listSessions(db: DatabaseSync, f: SessionFilters, now: Date, tz 
   if (f.sort === 'subject') out.sort((a, b) => (a.subject?.name ?? '').localeCompare(b.subject?.name ?? '') || b.id - a.id);
   if (f.sort === 'duration') out.sort((a, b) => b.focusSeconds - a.focusSeconds || b.id - a.id);
   return out;
+}
+
+/** How many search hits one `q` considers. Past this, the rarest matches may fall away. */
+const SEARCH_LIMIT = 300;
+
+type QWhere = { sql: string; params: SQLInputValue[] };
+
+/** Two SQL placeholders for the bound of one local day, in `[started_at, next day)`. */
+const DAY_BOUND = '(started_at >= ? AND started_at < ?)';
+/** Essay hits are capped so their day bounds stay well under SQLite's variable limit. */
+const MAX_ESSAY_DAYS = 60;
+
+/**
+ * The `q` condition for `listSessions`: the sessions the search hits name, as SQL and
+ * its params. A session hit is that session; an attachment hit is the session holding
+ * it (a derived file counts for its parent). An essay has no session, so an essay hit
+ * stands for the sessions on the session-day it falls on, each day clipped to `[from, to)`.
+ * No hits gives `0`, never a match-all.
+ */
+function sessionsForHits(db: DatabaseSync, hits: SearchHit[], tz: string, from?: string, to?: string): QWhere {
+  const sessions = new Set<number>();
+  const attachments = new Set<number>();
+  const days = new Set<string>();
+  for (const hit of hits.filter((h) => h.kind === 'session')) sessions.add(hit.refId);
+  for (const hit of hits.filter((h) => h.kind === 'attachment')) attachments.add(hit.refId);
+  for (const hit of hits.filter((h) => h.kind === 'essay')) {
+    const day = essayDay(db, hit.refId, tz);
+    if (day !== null) days.add(day);
+  }
+
+  const parts: string[] = ['0'];
+  const params: SQLInputValue[] = [];
+  if (sessions.size > 0) {
+    parts.push(`id IN (VALUES ${[...sessions].map(() => '(?)').join(', ')})`);
+    params.push(...sessions);
+  }
+  if (attachments.size > 0) {
+    const marks = [...attachments].map(() => '?').join(', ');
+    params.push(...attachments, ...attachments);
+    parts.push(`id IN (SELECT session_id FROM attachments WHERE id IN (${marks}) OR parent_id IN (${marks}))`);
+  }
+  const essayDays = [...days].filter((d) => (from === undefined || d >= from) && (to === undefined || d < to));
+  if (essayDays.length > 0) {
+    parts.push(essayDays.slice(0, MAX_ESSAY_DAYS).map(() => DAY_BOUND).join(' OR '));
+    for (const day of essayDays.slice(0, MAX_ESSAY_DAYS)) {
+      params.push(dayStart(day, tz).toISOString(), dayStart(addDays(day, 1), tz).toISOString());
+    }
+  }
+  return { sql: `(${parts.join(' OR ')})`, params };
+}
+
+/** The local day an essay was created, in the hub's time zone. */
+function essayDay(db: DatabaseSync, essayId: number, tz: string): string | null {
+  const row = db.prepare('SELECT created_at FROM essays WHERE id = ?').get(essayId) as { created_at: string } | undefined;
+  return row ? dayKey(new Date(row.created_at), tz) : null;
 }
 
 /**
