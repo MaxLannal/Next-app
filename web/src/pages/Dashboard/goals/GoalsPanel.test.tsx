@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, GoalAccuracy } from '@shared/types.ts';
+import { finishLine } from './GoalRow.tsx';
 import { GoalsPanel } from './GoalsPanel.tsx';
 import { PlanPrompt } from './PlanPrompt.tsx';
 
@@ -183,7 +184,8 @@ describe('GoalsPanel', () => {
     renderPanel();
 
     const first = await screen.findByRole('listitem', { name: 'Late goal' });
-    expect(within(first).getByText('No recent pace')).toBeTruthy();
+    // The due day leads, then the pace.
+    expect(within(first).getByText('Due 28 Nov · No recent pace')).toBeTruthy();
     expect(first.className).toContain('is-risk');
   });
 
@@ -362,5 +364,19 @@ describe('the + adder', () => {
     // Reopened, the draft is gone.
     await user.click(closed);
     expect((screen.getByRole('textbox', { name: 'New goal' }) as HTMLInputElement).value).toBe('');
+  });
+});
+
+describe('a goal\'s finish line', () => {
+  it('leads with the due day, then the pace, and gives the year of a day in another one', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-23T12:00:00'));
+    const both = goal({
+      deadline: '2026-12-12',
+      plannedMinutes: 3000,
+      progress: { mode: 'both', fraction: 0.02, fractionKind: 'work', projectedFinish: '2028-12-17', noRecentPace: false, atRisk: true },
+    });
+    expect(finishLine(both)).toEqual({ text: 'Due 12 Dec · Projected 17 Dec 2028', tone: 'risk' });
+    vi.useRealTimers();
   });
 });

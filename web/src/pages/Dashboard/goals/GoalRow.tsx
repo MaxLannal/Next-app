@@ -34,14 +34,24 @@ type GoalRowProps = {
 
 const hours = (seconds: number) => formatHours(seconds);
 
-/** "Projected 26 Nov", "Due 2 Dec", "No recent pace", or nothing for an unplanned goal. */
+/** "2 Dec", or "17 Dec 2028" for a day in another year than this one. */
+function day(dayKey: string, now = new Date()): string {
+  const year = Number(dayKey.slice(0, 4));
+  return year === now.getFullYear() ? formatDayShort(dayKey) : `${formatDayShort(dayKey)} ${year}`;
+}
+
+/**
+ * The due day, when there is one, then how the pace is going: "Due 29 Nov · No recent pace",
+ * "Due 12 Dec · Projected 17 Dec 2028", "Projected 26 Nov", "Due 2 Dec"; nothing for an unplanned goal.
+ */
 export function finishLine(goal: Goal): { text: string; tone: 'risk' | 'quiet' | 'plain' } | null {
   const { progress } = goal;
   if (progress.mode === 'none') return null;
-  if (progress.noRecentPace) return { text: 'No recent pace', tone: 'quiet' };
-  if (progress.projectedFinish !== null) return { text: `Projected ${formatDayShort(progress.projectedFinish)}`, tone: 'plain' };
-  if (goal.deadline !== null) return { text: `Due ${formatDayShort(goal.deadline)}`, tone: progress.atRisk ? 'risk' : 'plain' };
-  return null;
+  const pace = progress.noRecentPace ? 'No recent pace' : progress.projectedFinish !== null ? `Projected ${day(progress.projectedFinish)}` : null;
+  const parts = [goal.deadline !== null ? `Due ${day(goal.deadline)}` : null, pace].filter((p): p is string => p !== null);
+  if (parts.length === 0) return null;
+  const tone = goal.deadline !== null && progress.atRisk ? 'risk' : pace === 'No recent pace' && goal.deadline === null ? 'quiet' : 'plain';
+  return { text: parts.join(' · '), tone };
 }
 
 /** One plan line: "6 h / 10 h" for an hours plan, "6 h focused" for a deadline-only one. */
