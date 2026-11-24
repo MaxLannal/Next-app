@@ -19,7 +19,11 @@ export function NavTimer() {
   const [sheet, setSheet] = useState<FocusSession | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (session === null) return null;
+  // Everything a saved file or an edit touches lives under these keys.
+  const saved = () => {
+    void refreshFocusData(queryClient);
+    void queryClient.invalidateQueries({ queryKey: ['attachments'] });
+  };
 
   const run = async (act: () => Promise<FocusSession>) => {
     setError(null);
@@ -30,31 +34,29 @@ export function NavTimer() {
     }
   };
 
-  const stop = async () => {
+  const stop = async (id: number) => {
     setError(null);
     try {
-      setSheet(await actions.stop(session.id));
+      setSheet(await actions.stop(id));
     } catch (err) {
       setError(err instanceof ApiError && err.status !== 0 ? err.message : 'Couldn’t stop — retry');
     }
   };
 
-  // Everything a saved file or an edit touches lives under these keys.
-  const saved = () => {
-    void refreshFocusData(queryClient);
-    void queryClient.invalidateQueries({ queryKey: ['attachments'] });
-  };
-
+  // The session is over by the time Stop answers, so the wrap-up outlives the pill; it keeps its
+  // place in the tree either way, so nothing typed into it is lost when the pill goes.
   return (
     <>
-      <TimerPill
-        session={session}
-        elapsed={elapsed}
-        onPause={() => void run(() => actions.pause(session.id))}
-        onResume={() => void run(() => actions.resume(session.id))}
-        onStop={() => void stop()}
-      />
-      {error !== null && (
+      {session !== null && (
+        <TimerPill
+          session={session}
+          elapsed={elapsed}
+          onPause={() => void run(() => actions.pause(session.id))}
+          onResume={() => void run(() => actions.resume(session.id))}
+          onStop={() => void stop(session.id)}
+        />
+      )}
+      {session !== null && error !== null && (
         <p className="nav-timer__error" role="alert">
           {error}
         </p>

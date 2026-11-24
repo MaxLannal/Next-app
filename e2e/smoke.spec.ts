@@ -63,6 +63,8 @@ test('goal flow', async ({ page }) => {
 test('focus session flow', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('/');
+  // The start form waits behind Focus's + until it's asked for.
+  await page.getByRole('button', { name: 'New focus session' }).click();
   await page.getByPlaceholder('What are you working on?').fill('e2e algebra');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await page.getByRole('button', { name: 'Pause' }).first().click();
@@ -71,7 +73,8 @@ test('focus session flow', async ({ page }) => {
 
   const sheet = page.getByRole('dialog', { name: 'Wrap up' });
   await expect(sheet).toBeVisible();
-  await sheet.locator('input[type="file"]').setInputFiles(fixture('hw.py'));
+  // Upload files' own input; the camera has one too.
+  await sheet.locator('input[type="file"][multiple]').setInputFiles(fixture('hw.py'));
   await expect(sheet.getByRole('list', { name: 'Attached files' })).toContainText('hw.py');
   await shot(page, 'wrap-up');
   await sheet.getByRole('button', { name: 'Save', exact: true }).click();
