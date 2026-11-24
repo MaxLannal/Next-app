@@ -181,7 +181,8 @@ export function EssaysPage() {
         }
       >
         {isNarrow ? (
-          <section className="col" aria-labelledby="essays-tab-head">
+          // The one column the tabs chose; under 900px only the chosen one shows (essays.css).
+          <section className="col is-current" aria-labelledby="essays-tab-head">
             <header className="col__head">{columnHead(tab, 'essays-tab-head')}</header>
             <div className="col__body" {...dropZone(tab)}>
               {cards(tab)}
