@@ -1,32 +1,28 @@
-import { useState, type DragEvent } from 'react';
-import { PANEL_NAMES, PAGE_NAME_MAX, type PanelHeight, type PanelId, type PanelPlace } from '@shared/layout.ts';
-
-/** What a dragged panel carries, so a drop knows which one it is. */
-export const DRAG_TYPE = 'application/x-next-panel';
-
-const WIDTHS: Record<PanelPlace['w'], string> = { 2: 'A third', 3: 'Half', 4: 'Two thirds', 6: 'Full width' };
+import { useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { PANEL_NAMES, PAGE_NAME_MAX, type PanelId } from '@shared/layout.ts';
+import type { Edges } from './useArrange.ts';
 
 type BarProps = {
   hidden: PanelId[];
   canAdd: boolean;
   failed: boolean;
+  onPressHidden: (e: PointerEvent<HTMLElement>, id: PanelId) => void;
   onShow: (id: PanelId) => void;
-  onDragHidden: (id: PanelId | null) => void;
   onAddPage: () => void;
   onReset: () => void;
   onDone: () => void;
 };
 
 /**
- * Edit mode's bar along the foot of the window: the panels on no page (drag one onto a page, or
- * click it to put it on this one), a new page, the first three pages back, and Done.
+ * Edit mode's bar along the foot of the window: the panels on no page (drag one out onto a page,
+ * or click it to put it on this one), a new page, the first three pages back, and Done.
  */
-export function EditBar({ hidden, canAdd, failed, onShow, onDragHidden, onAddPage, onReset, onDone }: BarProps) {
+export function EditBar({ hidden, canAdd, failed, onPressHidden, onShow, onAddPage, onReset, onDone }: BarProps) {
   const [asking, setAsking] = useState(false);
   return (
     <div className="edit-bar" role="toolbar" aria-label="Edit the dashboard">
       <div className="edit-bar__inner glass">
-        <p className="edit-bar__lead">{failed ? 'Couldn’t save that — try again' : 'Drag panels to move them'}</p>
+        <p className="edit-bar__lead">{failed ? 'Couldn’t save that — try again' : 'Drag panels anywhere; drag their edges to size them'}</p>
         {hidden.length > 0 && (
           <ul className="edit-bar__hidden" aria-label="Hidden panels">
             {hidden.map((id) => (
@@ -34,14 +30,9 @@ export function EditBar({ hidden, canAdd, failed, onShow, onDragHidden, onAddPag
                 <button
                   className="edit-chip"
                   type="button"
-                  draggable
-                  onDragStart={(e: DragEvent<HTMLButtonElement>) => {
-                    e.dataTransfer.setData(DRAG_TYPE, id);
-                    e.dataTransfer.effectAllowed = 'move';
-                    onDragHidden(id);
-                  }}
-                  onDragEnd={() => onDragHidden(null)}
-                  onClick={() => onShow(id)}
+                  onPointerDown={(e) => onPressHidden(e, id)}
+                  // A pointer's click is the press's; this is Enter or Space.
+                  onClick={(e) => e.detail === 0 && onShow(id)}
                   aria-label={`Put ${PANEL_NAMES[id]} on this page`}
                 >
                   <span aria-hidden="true">+</span> {PANEL_NAMES[id]}
@@ -75,10 +66,10 @@ export function EditBar({ hidden, canAdd, failed, onShow, onDragHidden, onAddPag
   );
 }
 
-type HeadProps = { name: string; first: boolean; onRename: (name: string) => void; onDelete: () => void };
+type HeadProps = { name: string; canDelete: boolean; onRename: (name: string) => void; onDelete: () => void };
 
-/** A page's name, to change, and Delete for any page but the first (the clock's). */
-export function PageHead({ name, first, onRename, onDelete }: HeadProps) {
+/** A page's name, to change, and Delete (its panels go to the hidden ones). */
+export function PageHead({ name, canDelete, onRename, onDelete }: HeadProps) {
   const [draft, setDraft] = useState(name);
   const [was, setWas] = useState(name);
   if (name !== was) {
@@ -107,7 +98,7 @@ export function PageHead({ name, first, onRename, onDelete }: HeadProps) {
           }
         }}
       />
-      {!first && (
+      {canDelete && (
         <button className="btn btn-ghost btn-sm page-head__delete" type="button" onClick={onDelete}>
           Delete page
         </button>
@@ -116,58 +107,53 @@ export function PageHead({ name, first, onRename, onDelete }: HeadProps) {
   );
 }
 
+const HANDLES: [string, Edges][] = [
+  ['n', { n: true }],
+  ['s', { s: true }],
+  ['e', { e: true }],
+  ['w', { w: true }],
+  ['ne', { n: true, e: true }],
+  ['nw', { n: true, w: true }],
+  ['se', { s: true, e: true }],
+  ['sw', { s: true, w: true }],
+];
+
 type ToolsProps = {
-  place: PanelPlace;
-  index: number;
-  count: number;
+  id: PanelId;
   page: number;
   pageNames: string[];
-  onWider: (step: -1 | 1) => void;
-  onHeight: (h: PanelHeight) => void;
-  onMove: (page: number, index: number) => void;
+  onPress: (e: PointerEvent<HTMLElement>, edges: Edges | null) => void;
+  onNudge: (e: KeyboardEvent) => void;
+  onPage: (page: number) => void;
   onHide: () => void;
 };
 
-/** Over a panel in edit mode: its name, its size, and where it goes; drag it by the strip. */
-export function SlotTools({ place, index, count, page, pageNames, onWider, onHeight, onMove, onHide }: ToolsProps) {
-  const name = PANEL_NAMES[place.id];
+/**
+ * Over a panel in edit mode: a strip with its name (its grip: drag it, or move it with the arrow
+ * keys and size it with Shift), its page and Hide, and a handle on every edge and corner.
+ */
+export function SlotTools({ id, page, pageNames, onPress, onNudge, onPage, onHide }: ToolsProps) {
+  const name = PANEL_NAMES[id];
   return (
     <div className="slot__edit">
       <div className="slot__strip">
-        <span className="slot__name">
-          <span className="slot__grip" aria-hidden="true">
-            ⠿
-          </span>
+        <button
+          className="slot__grip"
+          type="button"
+          aria-label={`Move ${name}: arrow keys move it, Shift and the arrows size it`}
+          onPointerDown={(e) => onPress(e, null)}
+          onKeyDown={onNudge}
+        >
+          <span aria-hidden="true">⠿</span>
           {name}
-        </span>
-        <div className="slot__tools" role="group" aria-label={`Arrange ${name}`}>
-          <button className="slot__tool" type="button" aria-label={`Narrower: ${name}`} disabled={place.w === 2} onClick={() => onWider(-1)}>
-            −
-          </button>
-          <span className="slot__size">{WIDTHS[place.w]}</span>
-          <button className="slot__tool" type="button" aria-label={`Wider: ${name}`} disabled={place.w === 6} onClick={() => onWider(1)}>
-            +
-          </button>
-          <button
-            className="slot__tool slot__tool--text"
-            type="button"
-            aria-pressed={place.h === 2}
-            aria-label={`Two rows tall: ${name}`}
-            onClick={() => onHeight(place.h === 2 ? 1 : 2)}
-          >
-            Tall
-          </button>
-          <button className="slot__tool" type="button" aria-label={`Move earlier: ${name}`} disabled={index === 0} onClick={() => onMove(page, index - 1)}>
-            ←
-          </button>
-          <button className="slot__tool" type="button" aria-label={`Move later: ${name}`} disabled={index === count - 1} onClick={() => onMove(page, index + 2)}>
-            →
-          </button>
+        </button>
+        <div className="slot__tools">
           <select
             className="slot__page"
             aria-label={`Page for ${name}`}
             value={page}
-            onChange={(e) => onMove(Number(e.target.value), Number.MAX_SAFE_INTEGER)}
+            onPointerDown={(e) => e.stopPropagation()}
+            onChange={(e) => onPage(Number(e.target.value))}
           >
             {pageNames.map((p, i) => (
               <option key={i} value={i}>
@@ -175,11 +161,14 @@ export function SlotTools({ place, index, count, page, pageNames, onWider, onHei
               </option>
             ))}
           </select>
-          <button className="slot__tool" type="button" aria-label={`Hide ${name}`} onClick={onHide}>
+          <button className="slot__tool" type="button" aria-label={`Hide ${name}`} onPointerDown={(e) => e.stopPropagation()} onClick={onHide}>
             ×
           </button>
         </div>
       </div>
+      {HANDLES.map(([edge, edges]) => (
+        <span key={edge} className={`slot__handle slot__handle--${edge}`} aria-hidden="true" onPointerDown={(e) => onPress(e, edges)} />
+      ))}
     </div>
   );
 }

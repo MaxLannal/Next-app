@@ -1,26 +1,33 @@
 /**
- * The dashboard's layout: its pages, in order, and the panels on each, in order, with the share of
- * the page each takes. Edited by hand on the dashboard (edit mode) and kept by the hub, so the app
- * and a browser show the same pages. The clock and today's agenda always head the first page.
+ * The dashboard's layout: its pages, in order, and where each panel sits on its page, arranged by
+ * hand in edit mode and kept by the hub, so the app and a browser show the same pages.
+ *
+ * A page is a box (the same on every page) laid on a snap grid of COLS columns by ROWS rows; a
+ * panel covers a rectangle of whole cells, anywhere on it. Panels don't overlap: one put down on
+ * others sends each to the free place nearest where it was (smaller, if only a smaller one fits).
+ * Every panel moves, the clock and today's agenda included; a hidden one is on no page.
  */
 
-export const PANEL_IDS = ['goals', 'focus', 'skills', 'heatmap', 'sleep', 'exercise', 'calendar', 'resources', 'media'] as const;
+export const PANEL_IDS = ['time', 'agenda', 'goals', 'focus', 'skills', 'heatmap', 'sleep', 'exercise', 'calendar', 'resources', 'media'] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
 
-/** How wide a panel is, in sixths of the page: a third, a half, two thirds, or all of it. */
-export const PANEL_WIDTHS = [2, 3, 4, 6] as const;
-export type PanelWidth = (typeof PANEL_WIDTHS)[number];
-/** How tall: one row of the page, or two. */
-export type PanelHeight = 1 | 2;
+export const COLS = 24;
+export const ROWS = 48;
+/** The smallest a panel can be made: a sixth of the page's width, an eighth of its height. */
+export const MIN_W = 4;
+export const MIN_H = 6;
 
-export type PanelPlace = { id: PanelId; w: PanelWidth; h: PanelHeight };
-export type DashboardPage = { name: string; panels: PanelPlace[] };
-export type DashboardLayout = { pages: DashboardPage[] };
+export type Rect = { x: number; y: number; w: number; h: number };
+export type PanelRect = Rect & { id: PanelId };
+export type DashboardPage = { name: string; panels: PanelRect[] };
+export type DashboardLayout = { version: 2; pages: DashboardPage[] };
 
 export const MAX_PAGES = 8;
 export const PAGE_NAME_MAX = 40;
 
 export const PANEL_NAMES: Record<PanelId, string> = {
+  time: 'Time',
+  agenda: 'Today',
   goals: 'Goals',
   focus: 'Focus',
   skills: 'Skill tracker',
@@ -32,47 +39,173 @@ export const PANEL_NAMES: Record<PanelId, string> = {
   media: 'Now playing',
 };
 
-function place(id: PanelId, w: PanelWidth, h: PanelHeight = 1): PanelPlace {
-  return { id, w, h };
-}
+const at = (id: PanelId, x: number, y: number, w: number, h: number): PanelRect => ({ id, x, y, w, h });
 
 /** Today, Progress and Plans, as the dashboard first came. */
 export const DEFAULT_LAYOUT: DashboardLayout = {
+  version: 2,
   pages: [
-    { name: 'Today', panels: [place('goals', 3), place('focus', 3)] },
-    { name: 'Progress', panels: [place('skills', 2), place('heatmap', 4), place('sleep', 3), place('exercise', 3)] },
-    { name: 'Plans', panels: [place('calendar', 4, 2), place('resources', 2), place('media', 2)] },
+    { name: 'Today', panels: [at('time', 0, 0, 12, 19), at('agenda', 12, 0, 12, 19), at('goals', 0, 19, 12, 29), at('focus', 12, 19, 12, 29)] },
+    { name: 'Progress', panels: [at('skills', 0, 0, 8, 25), at('heatmap', 8, 0, 16, 25), at('sleep', 0, 25, 12, 23), at('exercise', 12, 25, 12, 23)] },
+    { name: 'Plans', panels: [at('calendar', 0, 0, 16, 48), at('resources', 16, 0, 8, 30), at('media', 16, 30, 8, 18)] },
   ],
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isPanelId = (v: unknown): v is PanelId => typeof v === 'string' && (PANEL_IDS as readonly string[]).includes(v);
-const isWidth = (v: unknown): v is PanelWidth => typeof v === 'number' && (PANEL_WIDTHS as readonly number[]).includes(v);
+const int = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : fallback);
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** A rectangle kept on the page and no smaller than a panel can be. */
+export function fitRect(r: Rect): Rect {
+  const w = clamp(r.w, MIN_W, COLS);
+  const h = clamp(r.h, MIN_H, ROWS);
+  return { x: clamp(r.x, 0, COLS - w), y: clamp(r.y, 0, ROWS - h), w, h };
+}
 
 const pageName = (v: unknown, index: number) => {
   const name = typeof v === 'string' ? v.trim().slice(0, PAGE_NAME_MAX) : '';
   return name === '' ? `Page ${index + 1}` : name;
 };
 
+export const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
 /**
- * Any stored or sent layout made safe to draw: unknown panels and second copies dropped, sizes
- * kept to the ones there are, names trimmed (an empty one becomes "Page n"), and at least one
- * page, at most MAX_PAGES. Anything that isn't a layout at all is the default.
+ * The first layouts placed panels in order on six columns, a third to all of the width and one
+ * row or two tall; this lays such a page out on the grid the same way. On the first page the
+ * clock and agenda, which those layouts always drew on top, take the top again.
  */
-export function normalizeLayout(input: unknown): DashboardLayout {
-  if (!isRecord(input) || !Array.isArray(input.pages) || input.pages.length === 0) return structuredClone(DEFAULT_LAYOUT);
-  const seen = new Set<PanelId>();
-  const pages = input.pages.slice(0, MAX_PAGES).map((raw, index): DashboardPage => {
+function fromFlow(rawPages: unknown[]): DashboardLayout {
+  const seen = new Set<PanelId>(['time', 'agenda']);
+  const pages = rawPages.slice(0, MAX_PAGES).map((raw, index): DashboardPage => {
     const page = isRecord(raw) ? raw : {};
-    const panels: PanelPlace[] = [];
+    const items: { id: PanelId; w: number; h: number }[] = [];
     for (const p of Array.isArray(page.panels) ? page.panels : []) {
       if (!isRecord(p) || !isPanelId(p.id) || seen.has(p.id)) continue;
       seen.add(p.id);
-      panels.push({ id: p.id, w: isWidth(p.w) ? p.w : 3, h: p.h === 2 ? 2 : 1 });
+      items.push({ id: p.id, w: [2, 3, 4, 6].includes(p.w as number) ? (p.w as number) : 3, h: p.h === 2 ? 2 : 1 });
+    }
+    // Six columns, rows of equal height, each panel at the first place it fits.
+    const taken: boolean[][] = [];
+    const free = (row: number, col: number, w: number, h: number) => {
+      for (let r = row; r < row + h; r++) for (let c = col; c < col + w; c++) if (taken[r]?.[c]) return false;
+      return true;
+    };
+    const cells = items.map((item) => {
+      for (let row = 0; ; row++) {
+        for (let col = 0; col + item.w <= 6; col++) {
+          if (!free(row, col, item.w, item.h)) continue;
+          for (let r = row; r < row + item.h; r++) for (let c = col; c < col + item.w; c++) (taken[r] ??= [])[c] = true;
+          return { ...item, row, col };
+        }
+      }
+    });
+    const rows = Math.max(1, taken.length);
+    const top = index === 0 ? 19 : 0;
+    const span = ROWS - top;
+    const edge = (row: number) => top + Math.round((row * span) / rows);
+    const panels = cells.map((c) => fitRect({ x: c.col * 4, y: edge(c.row), w: c.w * 4, h: edge(c.row + c.h) - edge(c.row) }));
+    const placed = panels.map((r, i) => ({ id: cells[i]!.id, ...r }));
+    if (index === 0) placed.unshift(at('time', 0, 0, 12, 19), at('agenda', 12, 0, 12, 19));
+    return { name: pageName(page.name, index), panels: placed };
+  });
+  return { version: 2, pages };
+}
+
+/**
+ * Any stored or sent layout made safe to draw: unknown panels and second copies dropped, every
+ * panel kept on its page at least the smallest size, overlaps pushed apart, names trimmed (an
+ * empty one becomes "Page n"), one page at least and MAX_PAGES at most. A layout from before
+ * panels sat anywhere is laid out on the grid as it was; anything else is the default.
+ */
+export function normalizeLayout(input: unknown): DashboardLayout {
+  if (!isRecord(input) || !Array.isArray(input.pages) || input.pages.length === 0) return structuredClone(DEFAULT_LAYOUT);
+  if (input.version !== 2) return fromFlow(input.pages);
+  const seen = new Set<PanelId>();
+  const pages = input.pages.slice(0, MAX_PAGES).map((raw, index): DashboardPage => {
+    const page = isRecord(raw) ? raw : {};
+    let panels: PanelRect[] = [];
+    for (const p of Array.isArray(page.panels) ? page.panels : []) {
+      if (!isRecord(p) || !isPanelId(p.id) || seen.has(p.id)) continue;
+      seen.add(p.id);
+      const rect = fitRect({ x: int(p.x, 0), y: int(p.y, 0), w: int(p.w, 12), h: int(p.h, 20) });
+      panels = settle([...panels, { id: p.id, ...rect }], p.id);
     }
     return { name: pageName(page.name, index), panels };
   });
-  return { pages };
+  return { version: 2, pages };
+}
+
+/** The first place on a page a w×h panel fits without touching another, top to bottom, left to right. */
+export function freeSpot(panels: Rect[], w: number, h: number): { x: number; y: number } | null {
+  for (let y = 0; y + h <= ROWS; y++) {
+    for (let x = 0; x + w <= COLS; x++) {
+      const r = { x, y, w, h };
+      if (!panels.some((p) => overlaps(p, r))) return { x, y };
+    }
+  }
+  return null;
+}
+
+/** Rows are much shorter than columns are wide; distances are weighed as they look on screen. */
+const COL_IN_ROWS = 3.5;
+
+/**
+ * Where a panel that has to move goes: the free place nearest where it was, at its size; failing
+ * that, at a smaller size, down to the smallest a panel can be; failing even that, where it was.
+ */
+function nearestFit(placed: Rect[], p: PanelRect): PanelRect {
+  for (const [fw, fh] of [
+    [1, 1],
+    [1, 0.75],
+    [0.75, 0.75],
+    [0.5, 0.75],
+    [0.5, 0.5],
+    [0, 0],
+  ] as const) {
+    const w = Math.max(MIN_W, Math.round(p.w * fw));
+    const h = Math.max(MIN_H, Math.round(p.h * fh));
+    let best: PanelRect | null = null;
+    let far = Infinity;
+    for (let y = 0; y + h <= ROWS; y++) {
+      for (let x = 0; x + w <= COLS; x++) {
+        const r = { x, y, w, h };
+        if (placed.some((q) => overlaps(q, r))) continue;
+        const d = ((x - p.x) * COL_IN_ROWS) ** 2 + (y - p.y) ** 2;
+        if (d < far) {
+          far = d;
+          best = { id: p.id, ...r };
+        }
+      }
+    }
+    if (best) return best;
+  }
+  return p;
+}
+
+/**
+ * The page with `id` held where it is and the panels it covers moved out of its way, each to the
+ * free place nearest where it was (where it left, on a full page: the two trade places). The
+ * panels it doesn't touch stay put.
+ */
+export function settle(panels: PanelRect[], id: PanelId): PanelRect[] {
+  const held = panels.find((p) => p.id === id);
+  if (!held) return panels;
+  const others = panels.filter((p) => p.id !== id);
+  const placed: PanelRect[] = [held, ...others.filter((p) => !overlaps(p, held))];
+  const moved = new Map<PanelId, PanelRect>();
+  for (const p of others.filter((q) => overlaps(q, held)).sort((a, b) => a.y - b.y || a.x - b.x)) {
+    const r = nearestFit(placed, p);
+    placed.push(r);
+    moved.set(p.id, r);
+  }
+  return panels.map((p) => moved.get(p.id) ?? p);
+}
+
+/** Whether every panel on a page has a place of its own: no two overlap. */
+export function roomy(layout: DashboardLayout, page: number): boolean {
+  const panels = layout.pages[page]?.panels ?? [];
+  return panels.every((p, i) => panels.every((q, j) => i === j || !overlaps(p, q)));
 }
 
 /** The panels on no page: kept aside in edit mode, to be put back. */
@@ -81,65 +214,61 @@ export function hiddenPanels(layout: DashboardLayout): PanelId[] {
   return PANEL_IDS.filter((id) => !shown.has(id));
 }
 
-/** Where a panel is: its page and its place on it, or null when it's hidden. */
-export function findPanel(layout: DashboardLayout, id: PanelId): { page: number; index: number } | null {
+/** Where a panel is: its page and its rectangle, or null when it's hidden. */
+export function findPanel(layout: DashboardLayout, id: PanelId): { page: number; rect: PanelRect } | null {
   for (let page = 0; page < layout.pages.length; page++) {
-    const index = layout.pages[page]!.panels.findIndex((p) => p.id === id);
-    if (index >= 0) return { page, index };
+    const rect = layout.pages[page]!.panels.find((p) => p.id === id);
+    if (rect) return { page, rect };
   }
   return null;
 }
 
-const withPages = (pages: DashboardPage[]): DashboardLayout => ({ pages });
 const without = (layout: DashboardLayout, id: PanelId) => layout.pages.map((p) => ({ ...p, panels: p.panels.filter((x) => x.id !== id) }));
 
 /**
- * Puts a panel on `page` before the panel now at `index` (at the end when past them), from
- * wherever it was, hidden included. Places are counted as they are before it leaves.
+ * Puts a panel at `rect` on `page`, from wherever it was (another page, or hidden), and moves the
+ * panels there out of its way. Moving or resizing in place is the same call.
  */
-export function movePanel(layout: DashboardLayout, id: PanelId, page: number, index: number): DashboardLayout {
+export function placePanel(layout: DashboardLayout, id: PanelId, page: number, rect: Rect): DashboardLayout {
   if (page < 0 || page >= layout.pages.length) return layout;
-  const from = findPanel(layout, id);
-  const moving = from ? layout.pages[from.page]!.panels[from.index]! : place(id, 3);
-  const at = from && from.page === page && from.index < index ? index - 1 : index;
   const pages = without(layout, id);
-  const target = pages[page]!.panels;
-  target.splice(Math.max(0, Math.min(at, target.length)), 0, moving);
-  return withPages(pages);
+  const target = pages[page]!;
+  target.panels = settle([...target.panels, { id, ...fitRect(rect) }], id);
+  return { version: 2, pages };
+}
+
+/** Puts a hidden panel back on `page`, in the first place a good size of it fits. */
+export function showPanel(layout: DashboardLayout, id: PanelId, page: number): DashboardLayout {
+  const panels = layout.pages[page]?.panels ?? [];
+  for (const [w, h] of [
+    [12, 24],
+    [8, 16],
+    [6, 12],
+    [MIN_W, MIN_H],
+  ] as const) {
+    const spot = freeSpot(panels, w, h);
+    if (spot) return placePanel(layout, id, page, { ...spot, w, h });
+  }
+  return placePanel(layout, id, page, { x: 0, y: 0, w: 12, h: 24 });
 }
 
 /** Takes a panel off its page; it waits among the hidden ones. */
 export function hidePanel(layout: DashboardLayout, id: PanelId): DashboardLayout {
-  return withPages(without(layout, id));
-}
-
-/** A panel one size wider or narrower (`step` ±1), or one row or two tall. */
-export function resizePanel(layout: DashboardLayout, id: PanelId, change: { step?: -1 | 1; h?: PanelHeight }): DashboardLayout {
-  return withPages(
-    layout.pages.map((p) => ({
-      ...p,
-      panels: p.panels.map((x) => {
-        if (x.id !== id) return x;
-        const at = PANEL_WIDTHS.indexOf(x.w) + (change.step ?? 0);
-        const w = PANEL_WIDTHS[Math.max(0, Math.min(PANEL_WIDTHS.length - 1, at))]!;
-        return { ...x, w, h: change.h ?? x.h };
-      }),
-    })),
-  );
+  return { version: 2, pages: without(layout, id) };
 }
 
 /** A new empty page at the end, named for its place; none past MAX_PAGES. */
 export function addPage(layout: DashboardLayout): DashboardLayout {
   if (layout.pages.length >= MAX_PAGES) return layout;
-  return withPages([...layout.pages, { name: `Page ${layout.pages.length + 1}`, panels: [] }]);
+  return { version: 2, pages: [...layout.pages, { name: `Page ${layout.pages.length + 1}`, panels: [] }] };
 }
 
-/** Removes a page; its panels go to the hidden ones. The first page, with the clock, stays. */
+/** Removes a page; its panels go to the hidden ones. There is always one page left. */
 export function deletePage(layout: DashboardLayout, page: number): DashboardLayout {
-  if (page <= 0 || page >= layout.pages.length) return layout;
-  return withPages(layout.pages.filter((_, i) => i !== page));
+  if (layout.pages.length <= 1 || page < 0 || page >= layout.pages.length) return layout;
+  return { version: 2, pages: layout.pages.filter((_, i) => i !== page) };
 }
 
 export function renamePage(layout: DashboardLayout, page: number, name: string): DashboardLayout {
-  return withPages(layout.pages.map((p, i) => (i === page ? { ...p, name: name.slice(0, PAGE_NAME_MAX) } : p)));
+  return { version: 2, pages: layout.pages.map((p, i) => (i === page ? { ...p, name: name.slice(0, PAGE_NAME_MAX) } : p)) };
 }

@@ -1,16 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
-import {
-  addPage,
-  deletePage,
-  hiddenPanels,
-  hidePanel,
-  MAX_PAGES,
-  movePanel,
-  renamePage,
-  resizePanel,
-  type PanelId,
-  type PanelPlace,
-} from '@shared/layout.ts';
+import { useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { addPage, deletePage, hiddenPanels, hidePanel, MAX_PAGES, placePanel, renamePage, showPanel, type PanelId, type PanelRect } from '@shared/layout.ts';
 import { useCurrentSession } from './focus/useSessions.ts';
 import { ResourcesPanel } from './resources/ResourcesPanel.tsx';
 import { CalendarPanel } from './calendar/CalendarPanel.tsx';
@@ -24,7 +13,8 @@ import { FocusPanel } from './focus/FocusPanel.tsx';
 import { GoalsPanel } from './goals/GoalsPanel.tsx';
 import { SkillTrackerPanel } from './skills/SkillTrackerPanel.tsx';
 import { DEFAULT_WALLPAPER, useWallpaper } from '../../lib/useWallpaper.ts';
-import { DRAG_TYPE, EditBar, PageHead, SlotTools } from './EditLayout.tsx';
+import { EditBar, PageHead, SlotTools } from './EditLayout.tsx';
+import { useArrange } from './useArrange.ts';
 import { useLayout } from './useLayout.ts';
 import { usePager } from './usePager.ts';
 import './pages.css';
@@ -32,6 +22,16 @@ import './pages.css';
 const PHOTO_SOURCE = 'https://commons.wikimedia.org/wiki/File:Vallee-brouillard.jpg';
 
 const PANELS: Record<PanelId, () => ReactNode> = {
+  time: () => (
+    <div className="hero__time">
+      <TimePanel />
+    </div>
+  ),
+  agenda: () => (
+    <div className="hero__agenda">
+      <TodayAgenda />
+    </div>
+  ),
   goals: () => <GoalsPanel />,
   focus: () => <FocusPanel />,
   skills: () => <SkillTrackerPanel />,
@@ -43,17 +43,15 @@ const PANELS: Record<PanelId, () => ReactNode> = {
   media: () => <NowPlayingPanel />,
 };
 
-/** Hovering a dragged panel over a page's dot this long turns to that page. */
-const DOT_HOVER_MS = 450;
-
-type Drop = { page: number; index: number };
+/** Top to bottom, then left to right: the order a page reads in, and its panels stack in on a phone. */
+const reading = (a: PanelRect, b: PanelRect) => a.y - b.y || a.x - b.x;
 
 /**
  * The dashboard's pages over the wallpaper, each a whole screen, turned with some force
- * (usePager). The first is headed by the time and today's agenda; which panels each page holds,
- * in what order and at what size, is the layout (useLayout), arranged by hand in edit mode: drag a
- * panel to move it (onto a page's dot for another page), size it, hide it, add and delete pages.
- * A small window scrolls through the pages as one.
+ * (usePager). Where every panel sits, the clock and agenda included, is the layout (useLayout):
+ * arranged by hand in edit mode (useArrange), where a panel drags anywhere on its page or onto
+ * another and its edges drag to size it, and pages are added, named and deleted. A small window
+ * scrolls through the pages as one; on a phone each page's panels stack in reading order.
  */
 export function Dashboard() {
   reserveForTimer();
@@ -62,104 +60,56 @@ export function Dashboard() {
   const { layout, change, reset, failed } = useLayout();
   const pager = usePager(layout.pages.length);
   const [editing, setEditing] = useState(false);
-  const [dragging, setDragging] = useState<PanelId | null>(null);
-  const [drop, setDrop] = useState<Drop | null>(null);
-  const dotTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const last = layout.pages.length - 1;
-  const pageNames = layout.pages.map((p) => p.name);
+  const arrange = useArrange(layout, change, pager);
+  const shown = arrange.preview;
+  const drag = arrange.drag;
+  const last = shown.pages.length - 1;
+  const pageNames = shown.pages.map((p) => p.name);
 
-  // Esc leaves edit mode (unless a sheet is open: Esc is the sheet's).
+  // Esc leaves edit mode (unless a sheet is open, or a drag is under way: Esc is theirs).
   useEffect(() => {
     if (!editing) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !document.querySelector('[role="dialog"]') && !(e.target instanceof HTMLInputElement)) setEditing(false);
+      if (e.key !== 'Escape' || drag || document.querySelector('[role="dialog"]') || e.target instanceof HTMLInputElement) return;
+      setEditing(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing]);
+  }, [editing, drag]);
 
-  const place = (id: PanelId, page: number, index: number) => change(movePanel(layout, id, page, index));
-  const endDrag = () => {
-    setDragging(null);
-    setDrop(null);
-    if (dotTimer.current) clearTimeout(dotTimer.current);
-  };
-  const aim = (to: Drop) => {
-    if (drop?.page !== to.page || drop.index !== to.index) setDrop(to);
-  };
-  const dropped = (e: DragEvent, fallback: Drop) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const id = dragging ?? (e.dataTransfer.getData(DRAG_TYPE) as PanelId);
-    const to = drop ?? fallback;
-    if (id) place(id, to.page, to.index);
-    endDrag();
-  };
-
-  /** A panel being dropped on: it lands before this one, or after it from its right half. */
-  const onSlot = (page: number, index: number) => ({
-    onDragOver: (e: DragEvent<HTMLElement>) => {
-      if (dragging === null) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const box = e.currentTarget.getBoundingClientRect();
-      aim({ page, index: e.clientX > box.left + box.width / 2 ? index + 1 : index });
-    },
-    onDrop: (e: DragEvent<HTMLElement>) => dropped(e, { page, index }),
-  });
-  /** Anywhere else on a page: the end of it. */
-  const onGrid = (page: number, count: number) => ({
-    onDragOver: (e: DragEvent<HTMLElement>) => {
-      if (dragging === null) return;
-      e.preventDefault();
-      aim({ page, index: count });
-    },
-    onDrop: (e: DragEvent<HTMLElement>) => dropped(e, { page, index: count }),
-  });
-
-  const slot = (p: PanelPlace, page: number, index: number, count: number) => {
-    const aimed = drop?.page === page ? drop.index : null;
-    const classes = ['slot'];
+  const slot = (p: PanelRect, page: number, media: PanelRect | undefined) => {
+    const lifted = drag?.id === p.id && drag.moved ? drag.lifted : null;
+    const classes = ['slot', `slot--${p.id}`];
     if (editing) classes.push('is-editing');
-    if (dragging === p.id) classes.push('is-dragging');
-    if (aimed === index) classes.push('drop-before');
-    if (aimed === count && index === count - 1) classes.push('drop-after');
+    if (lifted) classes.push('is-lifted');
+    if (drag?.id === p.id && drag.kind === 'resize') classes.push('is-sizing');
+    const style = { '--x': p.x, '--y': p.y, '--w': p.w, '--h': p.h } as CSSProperties;
+    // Now playing draws nothing with nothing playing; the panel right above it, as wide, takes its rows then.
+    const grows = media !== undefined && media.id !== p.id && media.x === p.x && media.w === p.w && media.y === p.y + p.h;
+    if (grows) Object.assign(style, { '--grown': p.h + media.h });
+    if (lifted) Object.assign(style, { left: lifted.left, top: lifted.top, width: lifted.width, height: lifted.height });
     return (
       <div
         key={p.id}
         id={p.id}
         className={classes.join(' ')}
-        data-w={p.w}
-        data-h={p.h}
-        style={{ '--w': p.w, '--h': p.h } as CSSProperties}
-        {...(editing
-          ? {
-          draggable: true,
-          onDragStart: (e: DragEvent<HTMLDivElement>) => {
-            e.dataTransfer.setData(DRAG_TYPE, p.id);
-            e.dataTransfer.effectAllowed = 'move';
-            setDragging(p.id);
-          },
-          onDragEnd: endDrag,
-          ...onSlot(page, index),
-        }
-          : {})}
+        style={style}
+        data-grows={grows ? '' : undefined}
+        onPointerDown={editing ? (e) => arrange.press(e, p.id) : undefined}
       >
         <div className="slot__body" inert={editing}>
           {PANELS[p.id]()}
         </div>
         {editing && (
           <SlotTools
-            place={p}
-            index={index}
-            count={count}
+            id={p.id}
             page={page}
             pageNames={pageNames}
-            onWider={(step) => change(resizePanel(layout, p.id, { step }))}
-            onHeight={(h) => change(resizePanel(layout, p.id, { h }))}
-            onMove={(toPage, toIndex) => {
-              place(p.id, toPage, toIndex);
-              if (toPage !== page) pager.go(toPage);
+            onPress={(e, edges) => arrange.press(e, p.id, edges)}
+            onNudge={(e) => arrange.nudge(e, p.id)}
+            onPage={(to) => {
+              change(placePanel(layout, p.id, to, p));
+              pager.go(to);
             }}
             onHide={() => change(hidePanel(layout, p.id))}
           />
@@ -185,44 +135,38 @@ export function Dashboard() {
         />
         <div className="backdrop__scrim" />
       </div>
-      <div ref={pager.ref} className={['dash', pager.paged && 'is-paged', editing && 'is-editing'].filter(Boolean).join(' ')}>
+      <div
+        ref={pager.ref}
+        className={['dash', pager.paged && 'is-paged', editing && 'is-editing', drag?.moved && 'is-dragging'].filter(Boolean).join(' ')}
+      >
         <div
           className="dash__track"
           data-leaning={pager.lean !== 0 ? '' : undefined}
           style={{ '--page': pager.page, '--lean': `${pager.lean}px` } as CSSProperties}
         >
-          {layout.pages.map((page, i) => (
-            <section
-              key={i}
-              className={i === 0 ? 'dash-page hero' : 'dash-page'}
-              data-page={i}
-              data-hero={i === 0 ? '' : undefined}
-              aria-label={page.name}
-            >
+          {shown.pages.map((page, i) => (
+            <section key={i} className="dash-page" data-page={i} data-hero={i === 0 ? '' : undefined} aria-label={page.name}>
               {editing && (
                 <PageHead
                   name={page.name}
-                  first={i === 0}
+                  canDelete={layout.pages.length > 1}
                   onRename={(name) => change(renamePage(layout, i, name))}
                   onDelete={() => {
                     change(deletePage(layout, i));
-                    pager.go(i - 1);
+                    pager.go(Math.max(0, i - 1));
                   }}
                 />
               )}
-              {i === 0 && (
-                <div className="container hero__grid">
-                  <div id="hero-time" className="hero__time"><TimePanel /></div>
-                  <div id="hero-agenda" className="hero__agenda"><TodayAgenda /></div>
+              <div className="container">
+                <div className="dash-canvas">
+                  {[...page.panels].sort(reading).map((p) => slot(p, i, page.panels.find((x) => x.id === 'media')))}
+                  {drag?.moved && drag.page === i && (
+                    <div className="slot-ghost" style={{ '--x': drag.rect.x, '--y': drag.rect.y, '--w': drag.rect.w, '--h': drag.rect.h } as CSSProperties} />
+                  )}
+                  {editing && page.panels.length === 0 && !drag && (
+                    <p className="dash-empty">An empty page. Drag a panel here, or put one back from the hidden ones below.</p>
+                  )}
                 </div>
-              )}
-              <div className={i === 0 ? 'container dash-grid hero__panels' : 'container dash-grid'} {...(editing ? onGrid(i, page.panels.length) : {})}>
-                {page.panels.map((p, index) => slot(p, i, index, page.panels.length))}
-                {editing && page.panels.length === 0 && (
-                  <p className={drop?.page === i ? 'dash-empty is-aimed' : 'dash-empty'}>
-                    An empty page. Drag a panel here, or put one back from the hidden ones below.
-                  </p>
-                )}
               </div>
               {i === last && wallpaper === null && (
                 <p className="container foot__credits">
@@ -239,34 +183,15 @@ export function Dashboard() {
 
         {pager.paged && (
           <nav className="dash__dots" aria-label="Dashboard pages">
-            {layout.pages.map((page, i) => (
+            {shown.pages.map((page, i) => (
               <button
                 key={i}
-                className={drop !== null && dragging !== null && pager.page !== i ? 'dash__dot is-target' : 'dash__dot'}
+                className="dash__dot"
                 type="button"
+                data-index={i}
                 aria-label={`Page ${i + 1}: ${page.name}`}
                 aria-current={pager.page === i ? 'page' : undefined}
                 onClick={() => pager.go(i)}
-                // While dragging a panel, a dot is a way to its page: hover to turn, or drop to put it at the end.
-                onDragOver={(e) => {
-                  if (dragging === null) return;
-                  e.preventDefault();
-                  aim({ page: i, index: layout.pages[i]!.panels.length });
-                  if (dotTimer.current === null && pager.page !== i) {
-                    dotTimer.current = setTimeout(() => {
-                      dotTimer.current = null;
-                      pager.go(i);
-                    }, DOT_HOVER_MS);
-                  }
-                }}
-                onDragLeave={() => {
-                  if (dotTimer.current) clearTimeout(dotTimer.current);
-                  dotTimer.current = null;
-                }}
-                onDrop={(e) => {
-                  dropped(e, { page: i, index: layout.pages[i]!.panels.length });
-                  pager.go(i);
-                }}
               />
             ))}
           </nav>
@@ -277,8 +202,8 @@ export function Dashboard() {
             hidden={hiddenPanels(layout)}
             canAdd={layout.pages.length < MAX_PAGES}
             failed={failed}
-            onShow={(id) => place(id, pager.paged ? pager.page : last, Number.MAX_SAFE_INTEGER)}
-            onDragHidden={(id) => (id === null ? endDrag() : setDragging(id))}
+            onPressHidden={arrange.pressHidden}
+            onShow={(id) => change(showPanel(layout, id, pager.page))}
             onAddPage={() => {
               change(addPage(layout));
               pager.go(layout.pages.length);
