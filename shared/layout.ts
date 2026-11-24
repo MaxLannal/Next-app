@@ -2,8 +2,8 @@
  * The dashboard's layout: its pages, in order, and where each panel sits on its page, arranged by
  * hand in edit mode and kept by the hub, so the app and a browser show the same pages.
  *
- * A page is a box (the same on every page) laid on a snap grid of COLS columns by ROWS rows; a
- * panel covers a rectangle of whole cells, anywhere on it. Panels don't overlap: one put down on
+ * A page is the whole screen beside the rail, laid on a snap grid of COLS columns by ROWS rows; a
+ * panel covers a rectangle of whole cells, anywhere on it, out to the window's edges. Panels don't overlap: one put down on
  * others sends each to the free place nearest where it was (smaller, if only a smaller one fits).
  * Every panel moves, the clock and today's agenda included; a hidden one is on no page.
  */
@@ -11,16 +11,24 @@
 export const PANEL_IDS = ['time', 'agenda', 'goals', 'focus', 'skills', 'heatmap', 'sleep', 'exercise', 'calendar', 'resources', 'media'] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
 
-export const COLS = 24;
+export const COLS = 48;
 export const ROWS = 48;
-/** The smallest a panel can be made: a sixth of the page's width, an eighth of its height. */
-export const MIN_W = 4;
+/** The smallest a panel can be made: an eighth of the screen's width and of its height. */
+export const MIN_W = 6;
 export const MIN_H = 6;
+
+/**
+ * Where the panels first sat, and sat in layouts before they could reach the window's edges: a box
+ * in the middle of the screen. Those layouts counted 24 columns by 48 rows across that box.
+ */
+const BOX = { x: 3, y: 9, w: 42, h: 33 };
+const BOX_COLS = 24;
+const BOX_ROWS = 48;
 
 export type Rect = { x: number; y: number; w: number; h: number };
 export type PanelRect = Rect & { id: PanelId };
 export type DashboardPage = { name: string; panels: PanelRect[] };
-export type DashboardLayout = { version: 2; pages: DashboardPage[] };
+export type DashboardLayout = { version: 3; pages: DashboardPage[] };
 
 export const MAX_PAGES = 8;
 export const PAGE_NAME_MAX = 40;
@@ -41,14 +49,23 @@ export const PANEL_NAMES: Record<PanelId, string> = {
 
 const at = (id: PanelId, x: number, y: number, w: number, h: number): PanelRect => ({ id, x, y, w, h });
 
-/** Today, Progress and Plans, as the dashboard first came. */
+/** A rectangle counted across the old box, counted across the screen: the same place on it. */
+function fromBox(r: PanelRect): PanelRect {
+  const col = (v: number) => BOX.x + Math.round((v * BOX.w) / BOX_COLS);
+  const row = (v: number) => BOX.y + Math.round((v * BOX.h) / BOX_ROWS);
+  const x = col(r.x);
+  const y = row(r.y);
+  return { id: r.id, x, y, w: col(r.x + r.w) - x, h: row(r.y + r.h) - y };
+}
+
+/** Today, Progress and Plans, as the dashboard first came: in the middle of the screen. */
 export const DEFAULT_LAYOUT: DashboardLayout = {
-  version: 2,
+  version: 3,
   pages: [
     { name: 'Today', panels: [at('time', 0, 0, 12, 19), at('agenda', 12, 0, 12, 19), at('goals', 0, 19, 12, 29), at('focus', 12, 19, 12, 29)] },
     { name: 'Progress', panels: [at('skills', 0, 0, 8, 25), at('heatmap', 8, 0, 16, 25), at('sleep', 0, 25, 12, 23), at('exercise', 12, 25, 12, 23)] },
     { name: 'Plans', panels: [at('calendar', 0, 0, 16, 48), at('resources', 16, 0, 8, 30), at('media', 16, 30, 8, 18)] },
-  ],
+  ].map((page) => ({ ...page, panels: page.panels.map(fromBox) })),
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -75,7 +92,7 @@ export const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w
  * row or two tall; this lays such a page out on the grid the same way. On the first page the
  * clock and agenda, which those layouts always drew on top, take the top again.
  */
-function fromFlow(rawPages: unknown[]): DashboardLayout {
+function fromFlow(rawPages: unknown[]): DashboardPage[] {
   const seen = new Set<PanelId>(['time', 'agenda']);
   const pages = rawPages.slice(0, MAX_PAGES).map((raw, index): DashboardPage => {
     const page = isRecord(raw) ? raw : {};
@@ -102,38 +119,40 @@ function fromFlow(rawPages: unknown[]): DashboardLayout {
     });
     const rows = Math.max(1, taken.length);
     const top = index === 0 ? 19 : 0;
-    const span = ROWS - top;
+    const span = BOX_ROWS - top;
     const edge = (row: number) => top + Math.round((row * span) / rows);
-    const panels = cells.map((c) => fitRect({ x: c.col * 4, y: edge(c.row), w: c.w * 4, h: edge(c.row + c.h) - edge(c.row) }));
-    const placed = panels.map((r, i) => ({ id: cells[i]!.id, ...r }));
+    const placed = cells.map((c) => at(c.id, c.col * 4, edge(c.row), c.w * 4, edge(c.row + c.h) - edge(c.row)));
     if (index === 0) placed.unshift(at('time', 0, 0, 12, 19), at('agenda', 12, 0, 12, 19));
     return { name: pageName(page.name, index), panels: placed };
   });
-  return { version: 2, pages };
+  return pages;
 }
 
 /**
  * Any stored or sent layout made safe to draw: unknown panels and second copies dropped, every
  * panel kept on its page at least the smallest size, overlaps pushed apart, names trimmed (an
- * empty one becomes "Page n"), one page at least and MAX_PAGES at most. A layout from before
- * panels sat anywhere is laid out on the grid as it was; anything else is the default.
+ * empty one becomes "Page n"), one page at least and MAX_PAGES at most. Older layouts (panels in
+ * order, or placed within the middle box) are laid out on the screen where they were; anything
+ * else is the default.
  */
 export function normalizeLayout(input: unknown): DashboardLayout {
   if (!isRecord(input) || !Array.isArray(input.pages) || input.pages.length === 0) return structuredClone(DEFAULT_LAYOUT);
-  if (input.version !== 2) return fromFlow(input.pages);
+  const inBox = input.version !== 3;
+  const rawPages: unknown[] = input.version === 2 || input.version === 3 ? input.pages : fromFlow(input.pages);
   const seen = new Set<PanelId>();
-  const pages = input.pages.slice(0, MAX_PAGES).map((raw, index): DashboardPage => {
+  const pages = rawPages.slice(0, MAX_PAGES).map((raw, index): DashboardPage => {
     const page = isRecord(raw) ? raw : {};
     let panels: PanelRect[] = [];
     for (const p of Array.isArray(page.panels) ? page.panels : []) {
       if (!isRecord(p) || !isPanelId(p.id) || seen.has(p.id)) continue;
       seen.add(p.id);
-      const rect = fitRect({ x: int(p.x, 0), y: int(p.y, 0), w: int(p.w, 12), h: int(p.h, 20) });
+      const given = { id: p.id, x: int(p.x, 0), y: int(p.y, 0), w: int(p.w, 12), h: int(p.h, 20) };
+      const rect = fitRect(inBox ? fromBox(given) : given);
       panels = settle([...panels, { id: p.id, ...rect }], p.id);
     }
     return { name: pageName(page.name, index), panels };
   });
-  return { version: 2, pages };
+  return { version: 3, pages };
 }
 
 /** The first place on a page a w×h panel fits without touching another, top to bottom, left to right. */
@@ -234,41 +253,41 @@ export function placePanel(layout: DashboardLayout, id: PanelId, page: number, r
   const pages = without(layout, id);
   const target = pages[page]!;
   target.panels = settle([...target.panels, { id, ...fitRect(rect) }], id);
-  return { version: 2, pages };
+  return { version: 3, pages };
 }
 
 /** Puts a hidden panel back on `page`, in the first place a good size of it fits. */
 export function showPanel(layout: DashboardLayout, id: PanelId, page: number): DashboardLayout {
   const panels = layout.pages[page]?.panels ?? [];
   for (const [w, h] of [
-    [12, 24],
-    [8, 16],
-    [6, 12],
+    [21, 16],
+    [14, 12],
+    [10, 9],
     [MIN_W, MIN_H],
   ] as const) {
     const spot = freeSpot(panels, w, h);
     if (spot) return placePanel(layout, id, page, { ...spot, w, h });
   }
-  return placePanel(layout, id, page, { x: 0, y: 0, w: 12, h: 24 });
+  return placePanel(layout, id, page, { x: BOX.x, y: BOX.y, w: 21, h: 16 });
 }
 
 /** Takes a panel off its page; it waits among the hidden ones. */
 export function hidePanel(layout: DashboardLayout, id: PanelId): DashboardLayout {
-  return { version: 2, pages: without(layout, id) };
+  return { version: 3, pages: without(layout, id) };
 }
 
 /** A new empty page at the end, named for its place; none past MAX_PAGES. */
 export function addPage(layout: DashboardLayout): DashboardLayout {
   if (layout.pages.length >= MAX_PAGES) return layout;
-  return { version: 2, pages: [...layout.pages, { name: `Page ${layout.pages.length + 1}`, panels: [] }] };
+  return { version: 3, pages: [...layout.pages, { name: `Page ${layout.pages.length + 1}`, panels: [] }] };
 }
 
 /** Removes a page; its panels go to the hidden ones. There is always one page left. */
 export function deletePage(layout: DashboardLayout, page: number): DashboardLayout {
   if (layout.pages.length <= 1 || page < 0 || page >= layout.pages.length) return layout;
-  return { version: 2, pages: layout.pages.filter((_, i) => i !== page) };
+  return { version: 3, pages: layout.pages.filter((_, i) => i !== page) };
 }
 
 export function renamePage(layout: DashboardLayout, page: number, name: string): DashboardLayout {
-  return { version: 2, pages: layout.pages.map((p, i) => (i === page ? { ...p, name: name.slice(0, PAGE_NAME_MAX) } : p)) };
+  return { version: 3, pages: layout.pages.map((p, i) => (i === page ? { ...p, name: name.slice(0, PAGE_NAME_MAX) } : p)) };
 }

@@ -146,7 +146,7 @@ export function Dashboard() {
         >
           {shown.pages.map((page, i) => (
             <section key={i} className="dash-page" data-page={i} data-hero={i === 0 ? '' : undefined} aria-label={page.name}>
-              {editing && (
+              {editing && !pager.paged && (
                 <PageHead
                   name={page.name}
                   canDelete={layout.pages.length > 1}
@@ -157,16 +157,14 @@ export function Dashboard() {
                   }}
                 />
               )}
-              <div className="container">
-                <div className="dash-canvas">
-                  {[...page.panels].sort(reading).map((p) => slot(p, i, page.panels.find((x) => x.id === 'media')))}
-                  {drag?.moved && drag.page === i && (
-                    <div className="slot-ghost" style={{ '--x': drag.rect.x, '--y': drag.rect.y, '--w': drag.rect.w, '--h': drag.rect.h } as CSSProperties} />
-                  )}
-                  {editing && page.panels.length === 0 && !drag && (
-                    <p className="dash-empty">An empty page. Drag a panel here, or put one back from the hidden ones below.</p>
-                  )}
-                </div>
+              <div className="dash-canvas">
+                {[...page.panels].sort(reading).map((p) => slot(p, i, page.panels.find((x) => x.id === 'media')))}
+                {drag?.moved && drag.page === i && (
+                  <div className="slot-ghost" style={{ '--x': drag.rect.x, '--y': drag.rect.y, '--w': drag.rect.w, '--h': drag.rect.h } as CSSProperties} />
+                )}
+                {editing && page.panels.length === 0 && !drag && (
+                  <p className="dash-empty">An empty page. Drag a panel here, or put one back from the hidden ones below.</p>
+                )}
               </div>
               {i === last && wallpaper === null && (
                 <p className="container foot__credits">
@@ -199,6 +197,19 @@ export function Dashboard() {
 
         {editing ? (
           <EditBar
+            page={
+              pager.paged && layout.pages[pager.page]
+                ? {
+                    name: layout.pages[pager.page]!.name,
+                    canDelete: layout.pages.length > 1,
+                    onRename: (name) => change(renamePage(layout, pager.page, name)),
+                    onDelete: () => {
+                      change(deletePage(layout, pager.page));
+                      pager.go(Math.max(0, pager.page - 1));
+                    },
+                  }
+                : undefined
+            }
             hidden={hiddenPanels(layout)}
             canAdd={layout.pages.length < MAX_PAGES}
             failed={failed}

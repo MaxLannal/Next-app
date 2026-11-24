@@ -18,9 +18,8 @@ import {
 export const GAP = 24;
 /** A press that moves less than this is a click, not a drag. */
 const SLOP = 4;
-/** Holding a dragged panel over a page's dot, or the top or foot of the window, this long turns the page. */
+/** Holding a dragged panel over a page's dot this long turns to that page. */
 const TURN_HOLD_MS = 450;
-const EDGE_ZONE = 44;
 const DOT_REACH = 18;
 
 export type Edges = { n?: boolean; s?: boolean; e?: boolean; w?: boolean };
@@ -45,9 +44,9 @@ type Pager = { page: number; go: (page: number) => void };
 const canvasOf = (page: number) => document.querySelector<HTMLElement>(`.dash-page[data-page="${page}"] .dash-canvas`);
 
 /**
- * Arranging the dashboard by hand: press a panel and drag it anywhere on its page, or onto
- * another (hold it over a page's dot, or at the top or foot of the window, and the page turns),
- * and drag its edges or corners to size it. It snaps to the page's grid as it goes, and the
+ * Arranging the dashboard by hand: press a panel and drag it anywhere on its page, out to the
+ * window's edges, or onto another (hold it over a page's dot, or turn the page with the wheel as
+ * you go), and drag its edges or corners to size it. It snaps to the page's grid as it goes, and the
  * panels in its way flow aside and back. `preview` is the layout to draw meanwhile; the drop
  * saves it. Arrow keys on a panel's grip move it a cell, and with Shift size it.
  */
@@ -101,17 +100,13 @@ export function useArrange(layout: DashboardLayout, change: (next: DashboardLayo
       return { ...d, rect: { x: rx, y: ry, w, h } };
     };
 
-    /** Which page a dragged panel held here asks for: a dot's, or the next one up or down at an edge. */
-    const pageAsked = (x: number, y: number, page: number): number | null => {
+    /** Which page a dragged panel held here asks for: the page of the dot it's over. */
+    const pageAsked = (x: number, y: number): number | null => {
       // A dot is small: anywhere near one counts.
       for (const dot of document.querySelectorAll<HTMLElement>('.dash__dot')) {
         const r = dot.getBoundingClientRect();
         if (x > r.left - DOT_REACH && x < r.right + DOT_REACH && y > r.top - DOT_REACH / 2 && y < r.bottom + DOT_REACH / 2) return Number(dot.dataset.index);
       }
-      const frame = document.querySelector('.dash.is-paged')?.getBoundingClientRect();
-      if (!frame) return null;
-      if (y < frame.top + EDGE_ZONE) return page - 1;
-      if (y > frame.bottom - EDGE_ZONE) return page + 1;
       return null;
     };
 
@@ -145,7 +140,7 @@ export function useArrange(layout: DashboardLayout, change: (next: DashboardLayo
       // Where the others would have nowhere left to go, it goes no further.
       if (!roomy(placePanel(next.start, next.id, next.page, next.rect), next.page)) next = { ...next, rect: d.rect };
       update(next);
-      if (next.kind === 'move') holdTurn(pageAsked(e.clientX, e.clientY, next.page), next);
+      if (next.kind === 'move') holdTurn(pageAsked(e.clientX, e.clientY), next);
     };
     const finish = (commit: boolean) => {
       const d = live.current.drag;
@@ -179,6 +174,12 @@ export function useArrange(layout: DashboardLayout, change: (next: DashboardLayo
     // The listeners read the drag from `live`: they need only be in place while there is one.
   }, [drag !== null]);
 
+  // The wheel turned the page under a panel being carried: it goes onto that page.
+  useEffect(() => {
+    const d = live.current.drag;
+    if (d && d.kind === 'move' && d.moved && d.page !== pager.page) update({ ...d, page: pager.page });
+  }, [pager.page]);
+
   /** A press on a panel: a move, or a resize when it's on one of its edges. */
   const press = (e: ReactPointerEvent<HTMLElement>, id: PanelId, edges: Edges | null = null) => {
     if (e.button !== 0) return;
@@ -196,7 +197,7 @@ export function useArrange(layout: DashboardLayout, change: (next: DashboardLayo
   const pressHidden = (e: ReactPointerEvent<HTMLElement>, id: PanelId) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    const rect = { x: 0, y: 0, w: 12, h: 24 };
+    const rect = { x: 0, y: 0, w: 21, h: 16 };
     live.current.press = { x: e.clientX, y: e.clientY, grab: { dx: 60, dy: 24 }, edges: null, r0: rect };
     update({ id, kind: 'move', start: layout, from: null, page: pager.page, rect, lifted: null, moved: false });
   };

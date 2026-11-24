@@ -1,21 +1,22 @@
 /* The dashboard's pages (Dashboard.tsx, usePager.ts, useArrange.ts; the layout in shared/layout.ts).
 
    Wide and tall enough, the dashboard is a frame the size of the window with its pages on a track
-   behind it; usePager turns them with some force and the track glides to the next. Every page is
-   the same box, a canvas on a grid of 24 columns by 48 rows, and every panel (the clock and today's
-   agenda too) covers a rectangle of it, wherever it was put in edit mode, in a compact form to fit.
+   behind it; usePager turns them with some force and the track glides to the next. Every page is a
+   canvas the size of the screen beside the rail, on a grid of 48 columns by 48 rows, and every
+   panel (the clock and today's agenda too) covers a rectangle of it, wherever it was put in edit
+   mode, out to the window's edges, in a compact form to fit.
    A smaller window scrolls through the pages as one; on a phone each page's panels stack. */
 
-.dash { --glass: oklch(20% 0.018 268 / 0.74); --hero-panel-h: 340px; --gap: 24px; --page-box: 600px; position: relative; }
+.dash { --glass: oklch(20% 0.018 268 / 0.74); --hero-panel-h: 340px; --gap: 24px; position: relative; }
 
 /* The canvas: a panel's place and size, in cells, become its position. The grid spans the box and
    one gap more, so the outer panels sit flush with the box's edges and gaps fall between panels. */
-.dash-canvas { --col: calc((100% + var(--gap)) / 24); --row: calc((100% + var(--gap)) / 48); position: relative; height: var(--page-box); }
+.dash-canvas { position: relative; height: max(560px, calc(100svh - var(--dock-h, 0px) - var(--gap))); }
 .dash-canvas > .slot, .slot-ghost {
   position: absolute;
-  left: calc(var(--x) * (100% + var(--gap)) / 24);
+  left: calc(var(--x) * (100% + var(--gap)) / 48);
   top: calc(var(--y) * (100% + var(--gap)) / 48);
-  width: calc(var(--w) * (100% + var(--gap)) / 24 - var(--gap));
+  width: calc(var(--w) * (100% + var(--gap)) / 48 - var(--gap));
   height: calc(var(--h) * (100% + var(--gap)) / 48 - var(--gap));
 }
 .dash-canvas > .slot { display: grid; container-type: size; transition: left 240ms var(--ease-out), top 240ms var(--ease-out), width 240ms var(--ease-out), height 240ms var(--ease-out); }
@@ -35,7 +36,8 @@
 .slot--time .time__clock.num { font-size: min(clamp(3.5rem, 5vw + 1rem, 6rem), 17cqw, 40cqh); }
 .slot--time .time__date { font-size: min(clamp(1.375rem, 0.8vw + 1rem, 1.75rem), 6cqw); }
 
-.dash-page { position: relative; padding-block: var(--space-xl); }
+/* Half a gap all round, so a panel at an edge sits a gap's width from the window's edge. */
+.dash-page { position: relative; padding: calc(var(--gap) / 2); }
 
 /* Which page is showing, down the right edge; each dot turns to its page. */
 .dash__dots { position: absolute; z-index: 5; top: 50%; right: 18px; display: grid; gap: 10px; transform: translateY(-50%); }
@@ -47,19 +49,15 @@
 /* ── In pages ───────────────────────────────────────────────────────────── */
 .dash.is-paged {
   --page-turn: 760ms;
-  /* A short window takes its height from the box first. */
-  --hero-panel-h: clamp(300px, calc(100svh - var(--dock-h, 0px) - 380px), 340px);
-  --page-box: calc(260px + var(--hero-panel-h));
   height: calc(100svh - var(--dock-h, 0px));
   overflow: hidden;
 }
 .dash.is-paged .dash__track { height: 100%; transform: translate3d(0, calc(var(--page) * -100% + var(--lean)), 0); transition: transform var(--page-turn) cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; }
 /* While a push leans the page, it follows the push closely. */
 .dash.is-paged .dash__track[data-leaning] { transition-duration: 180ms; }
-/* Each page's box centred a little below the middle (under the room the rail's top keeps). */
-.dash.is-paged .dash-page { display: flex; flex-direction: column; justify-content: center; height: 100%; padding: calc(var(--nav-h) + var(--space-lg)) 0 0; }
-.dash.is-paged .dash-page > .container { width: 100%; }
-.dash.is-paged .dash-canvas { height: min(var(--page-box), calc(100svh - var(--dock-h, 0px) - 2 * var(--space-xl))); }
+/* Each page is the screen; its canvas fills it. */
+.dash.is-paged .dash-page { height: 100%; }
+.dash.is-paged .dash-canvas { height: 100%; }
 .dash.is-paged .foot__credits { position: absolute; right: 0; bottom: var(--space-md); left: 0; }
 
 /* ── Compact panels, to fit their rectangles ────────────────────────────── */
@@ -173,8 +171,9 @@
 .dash-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: var(--space-xl); border: 1.5px dashed color-mix(in oklab, var(--color-light) 30%, transparent); border-radius: var(--radius-card); background: oklch(14% 0.014 268 / 0.35); color: var(--color-ink-2); text-align: center; }
 
 .page-head { display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md); }
-.dash.is-paged .page-head { position: absolute; z-index: 4; top: 14px; right: 0; left: 0; margin: 0; pointer-events: none; }
-.page-head > * { pointer-events: auto; }
+/* In pages, the page showing is named in the bar, out of the panels' way. */
+.page-head--bar { margin: 0; gap: 6px; }
+.page-head--bar .page-head__name { width: 11rem; height: 32px; }
 .page-head__name { width: min(18rem, 60%); height: 36px; padding: 0 14px; border: 0; border-radius: var(--radius-pill); background: oklch(14% 0.014 268 / 0.72); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 16%, transparent); color: var(--color-ink); font: 500 0.9375rem/1 var(--font-display); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .page-head__name:focus-visible { outline: none; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
 .page-head__delete { background: oklch(14% 0.014 268 / 0.6); }
@@ -197,6 +196,7 @@
 
 /* ── Narrow screens: each page's panels stack, in the order they read ───── */
 @media (max-width: 900px) {
+  .dash-page { padding: var(--space-lg) var(--gutter); }
   .dash-canvas { display: grid; gap: var(--space-lg); height: auto; }
   .dash-canvas > .slot { position: static; width: auto; height: auto; container-type: normal; transition: none; }
   .slot--goals, .slot--focus { min-height: var(--hero-panel-h); }

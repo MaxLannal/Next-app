@@ -3,6 +3,8 @@ import { PANEL_NAMES, PAGE_NAME_MAX, type PanelId } from '@shared/layout.ts';
 import type { Edges } from './useArrange.ts';
 
 type BarProps = {
+  /** The page showing, to name or delete here (in pages; a long page names each in place). */
+  page?: HeadProps;
   hidden: PanelId[];
   canAdd: boolean;
   failed: boolean;
@@ -17,11 +19,12 @@ type BarProps = {
  * Edit mode's bar along the foot of the window: the panels on no page (drag one out onto a page,
  * or click it to put it on this one), a new page, the first three pages back, and Done.
  */
-export function EditBar({ hidden, canAdd, failed, onPressHidden, onShow, onAddPage, onReset, onDone }: BarProps) {
+export function EditBar({ page, hidden, canAdd, failed, onPressHidden, onShow, onAddPage, onReset, onDone }: BarProps) {
   const [asking, setAsking] = useState(false);
   return (
     <div className="edit-bar" role="toolbar" aria-label="Edit the dashboard">
       <div className="edit-bar__inner glass">
+        {page ? <PageHead {...page} className="page-head page-head--bar" /> : null}
         <p className="edit-bar__lead">{failed ? 'Couldn’t save that — try again' : 'Drag panels anywhere; drag their edges to size them'}</p>
         {hidden.length > 0 && (
           <ul className="edit-bar__hidden" aria-label="Hidden panels">
@@ -66,10 +69,10 @@ export function EditBar({ hidden, canAdd, failed, onPressHidden, onShow, onAddPa
   );
 }
 
-type HeadProps = { name: string; canDelete: boolean; onRename: (name: string) => void; onDelete: () => void };
+type HeadProps = { name: string; canDelete: boolean; onRename: (name: string) => void; onDelete: () => void; className?: string };
 
 /** A page's name, to change, and Delete (its panels go to the hidden ones). */
-export function PageHead({ name, canDelete, onRename, onDelete }: HeadProps) {
+export function PageHead({ name, canDelete, onRename, onDelete, className = 'container page-head' }: HeadProps) {
   const [draft, setDraft] = useState(name);
   const [was, setWas] = useState(name);
   if (name !== was) {
@@ -82,7 +85,7 @@ export function PageHead({ name, canDelete, onRename, onDelete }: HeadProps) {
     else setDraft(name);
   };
   return (
-    <div className="container page-head">
+    <div className={className}>
       <input
         className="page-head__name"
         aria-label="Page name"

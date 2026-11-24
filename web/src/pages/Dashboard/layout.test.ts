@@ -44,25 +44,25 @@ describe('arranging the dashboard by hand', () => {
 
   it('puts a panel anywhere on its page; the one it covers takes the nearest free place, here where it left', () => {
     // Year of focus dropped across the top-left of Progress, over the skill tracker.
-    const moved = placePanel(DEFAULT_LAYOUT, 'heatmap', 1, { x: 0, y: 0, w: 16, h: 20 });
-    expect(rect(moved, 'heatmap')).toEqual({ x: 0, y: 0, w: 16, h: 20 });
-    expect(rect(moved, 'skills')).toEqual({ x: 16, y: 0, w: 8, h: 25 });
+    const moved = placePanel(DEFAULT_LAYOUT, 'heatmap', 1, { x: 3, y: 9, w: 28, h: 14 });
+    expect(rect(moved, 'heatmap')).toEqual({ x: 3, y: 9, w: 28, h: 14 });
+    expect(rect(moved, 'skills')).toEqual({ x: 31, y: 9, w: 14, h: 17 });
     // Those it doesn't touch stay put.
-    expect(rect(moved, 'sleep')).toEqual({ x: 0, y: 25, w: 12, h: 23 });
+    expect(rect(moved, 'sleep')).toEqual({ x: 3, y: 26, w: 21, h: 16 });
     tidy(moved);
   });
 
   it('leaves a gap where the panel was: nothing flows up to fill it', () => {
-    const moved = placePanel(DEFAULT_LAYOUT, 'skills', 1, { x: 0, y: 30, w: 8, h: 12 });
-    expect(rect(moved, 'heatmap')).toEqual({ x: 8, y: 0, w: 16, h: 25 });
+    const moved = placePanel(DEFAULT_LAYOUT, 'skills', 1, { x: 3, y: 30, w: 14, h: 8 });
+    expect(rect(moved, 'heatmap')).toEqual({ x: 17, y: 9, w: 28, h: 17 });
     tidy(moved);
   });
 
   it('sizes a panel by its edges, no smaller than a panel can be, and never off the page', () => {
     const page = addPage(DEFAULT_LAYOUT);
-    const wide = placePanel(page, 'skills', 3, { x: 0, y: 0, w: 30, h: 60 });
+    const wide = placePanel(page, 'skills', 3, { x: 0, y: 0, w: 99, h: 99 });
     expect(rect(wide, 'skills')).toEqual({ x: 0, y: 0, w: COLS, h: ROWS });
-    const tiny = placePanel(page, 'skills', 3, { x: 22, y: 47, w: 1, h: 1 });
+    const tiny = placePanel(page, 'skills', 3, { x: 46, y: 47, w: 1, h: 1 });
     expect(rect(tiny, 'skills')).toEqual({ x: COLS - MIN_W, y: ROWS - MIN_H, w: MIN_W, h: MIN_H });
     tidy(wide);
     tidy(tiny);
@@ -83,7 +83,7 @@ describe('arranging the dashboard by hand', () => {
 
   it('shrinks a covered panel into the nearest gap when nothing its size is free', () => {
     // A full-width panel across the middle of Progress leaves only strips above and below.
-    const moved = placePanel(DEFAULT_LAYOUT, 'skills', 1, { x: 0, y: 12, w: 24, h: 30 });
+    const moved = placePanel(DEFAULT_LAYOUT, 'skills', 1, { x: 0, y: 15, w: 48, h: 25 });
     tidy(moved);
     expect(moved.pages[1]!.panels).toHaveLength(4);
   });
@@ -104,7 +104,7 @@ describe('arranging the dashboard by hand', () => {
     const fewer = deletePage(DEFAULT_LAYOUT, 0);
     expect(fewer.pages.map((p) => p.name)).toEqual(['Progress', 'Plans']);
     expect(hiddenPanels(fewer)).toEqual(['time', 'agenda', 'goals', 'focus']);
-    const one = { version: 2 as const, pages: [DEFAULT_LAYOUT.pages[0]!] };
+    const one = { version: 3 as const, pages: [DEFAULT_LAYOUT.pages[0]!] };
     expect(deletePage(one, 0)).toBe(one);
   });
 
@@ -122,15 +122,35 @@ describe('arranging the dashboard by hand', () => {
       ],
     });
     expect(old.pages[0]!.panels.map((p) => p.id)).toEqual(['time', 'agenda', 'goals', 'focus']);
-    expect(rect(old, 'goals')).toEqual({ x: 0, y: 19, w: 12, h: 29 });
-    expect(rect(old, 'heatmap')).toEqual({ x: 8, y: 0, w: 16, h: 24 });
-    expect(rect(old, 'exercise')).toEqual({ x: 12, y: 24, w: 12, h: 24 });
+    expect(rect(old, 'goals')).toEqual({ x: 3, y: 22, w: 21, h: 20 });
+    expect(rect(old, 'heatmap')).toEqual({ x: 17, y: 9, w: 28, h: 17 });
+    expect(rect(old, 'exercise')).toEqual({ x: 24, y: 26, w: 21, h: 16 });
     tidy(old);
+  });
+
+  it('keeps a layout arranged within the middle box where it was, now that panels reach the edges', () => {
+    const before = normalizeLayout({
+      version: 2,
+      pages: [{ name: 'Progress', panels: [{ id: 'heatmap', x: 0, y: 0, w: 16, h: 24 }, { id: 'skills', x: 16, y: 0, w: 8, h: 24 }, { id: 'sleep', x: 0, y: 24, w: 12, h: 24 }] }],
+    });
+    expect(rect(before, 'heatmap')).toEqual({ x: 3, y: 9, w: 28, h: 17 });
+    expect(rect(before, 'skills')).toEqual({ x: 31, y: 9, w: 14, h: 17 });
+    expect(rect(before, 'sleep')).toEqual({ x: 3, y: 26, w: 21, h: 16 });
+  });
+
+  it('starts in the middle of the screen, with room around it to move into', () => {
+    const all = DEFAULT_LAYOUT.pages.flatMap((p) => p.panels);
+    expect(Math.min(...all.map((p) => p.x))).toBe(3);
+    expect(Math.max(...all.map((p) => p.x + p.w))).toBe(45);
+    expect(Math.min(...all.map((p) => p.y))).toBe(9);
+    expect(Math.max(...all.map((p) => p.y + p.h))).toBe(42);
+    const corner = placePanel(DEFAULT_LAYOUT, 'skills', 1, { x: 0, y: 0, w: 10, h: 8 });
+    expect(rect(corner, 'skills')).toEqual({ x: 0, y: 0, w: 10, h: 8 });
   });
 
   it('pushes apart a stored layout whose panels overlap', () => {
     const fixed = normalizeLayout({
-      version: 2,
+      version: 3,
       pages: [{ name: 'A', panels: [{ id: 'goals', x: 0, y: 0, w: 12, h: 12 }, { id: 'focus', x: 4, y: 4, w: 12, h: 12 }, { id: 'goals', x: 0, y: 30, w: 4, h: 4 }] }],
     });
     expect(fixed.pages[0]!.panels).toHaveLength(2);
