@@ -26,8 +26,25 @@ export const wallpaperQuery = {
   staleTime: 5 * 60_000,
 };
 
-/** The photo bank, for Settings. */
-export const useWallpaperBank = () => useQuery(wallpaperQuery);
+/** Remembers the wallpaper in this browser whenever it's read or changed, wherever that happens. */
+function useRemember(state: WallpaperState | undefined) {
+  useEffect(() => {
+    if (state === undefined) return;
+    try {
+      if (state.url === null) localStorage.removeItem(REMEMBERED);
+      else localStorage.setItem(REMEMBERED, state.url);
+    } catch {
+      // Private browsing: nothing to remember it in.
+    }
+  }, [state]);
+}
+
+/** The photo bank, for Settings. A switch made there is remembered, so the dashboard opens on it. */
+export function useWallpaperBank() {
+  const query = useQuery(wallpaperQuery);
+  useRemember(query.data);
+  return query;
+}
 
 /**
  * The wallpaper chosen in Settings, or null for the fog photograph. It is remembered in this
@@ -35,14 +52,6 @@ export const useWallpaperBank = () => useQuery(wallpaperQuery);
  */
 export function useWallpaper(): string | null {
   const query = useQuery(wallpaperQuery);
-  useEffect(() => {
-    if (query.data === undefined) return;
-    try {
-      if (query.data.url === null) localStorage.removeItem(REMEMBERED);
-      else localStorage.setItem(REMEMBERED, query.data.url);
-    } catch {
-      // Private browsing: nothing to remember it in.
-    }
-  }, [query.data]);
+  useRemember(query.data);
   return query.data === undefined ? remembered() : query.data.url;
 }
