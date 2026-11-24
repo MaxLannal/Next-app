@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { PANEL_NAMES, PAGE_NAME_MAX, type PanelId } from '@shared/layout.ts';
+import { baseOf, PANEL_NAMES, PAGE_NAME_MAX, type PanelId, type PanelKey } from '@shared/layout.ts';
 import type { Edges } from './useArrange.ts';
 
 type BarProps = {
@@ -122,12 +122,14 @@ const HANDLES: [string, Edges][] = [
 ];
 
 type ToolsProps = {
-  id: PanelId;
+  id: PanelKey;
   page: number;
   pageNames: string[];
   onPress: (e: PointerEvent<HTMLElement>, edges: Edges | null) => void;
   onNudge: (e: KeyboardEvent) => void;
   onPage: (page: number) => void;
+  /** For a panel that can be on several pages (the time): a copy onto the page chosen. */
+  onCopy?: (page: number) => void;
   onHide: () => void;
 };
 
@@ -135,8 +137,9 @@ type ToolsProps = {
  * Over a panel in edit mode: a strip with its name (its grip: drag it, or move it with the arrow
  * keys and size it with Shift), its page and Hide, and a handle on every edge and corner.
  */
-export function SlotTools({ id, page, pageNames, onPress, onNudge, onPage, onHide }: ToolsProps) {
-  const name = PANEL_NAMES[id];
+export function SlotTools({ id, page, pageNames, onPress, onNudge, onPage, onCopy, onHide }: ToolsProps) {
+  const copy = id !== baseOf(id);
+  const name = copy ? `${PANEL_NAMES[baseOf(id)]} (copy)` : PANEL_NAMES[baseOf(id)];
   return (
     <div className="slot__edit">
       <div className="slot__strip">
@@ -164,7 +167,29 @@ export function SlotTools({ id, page, pageNames, onPress, onNudge, onPage, onHid
               </option>
             ))}
           </select>
-          <button className="slot__tool" type="button" aria-label={`Hide ${name}`} onPointerDown={(e) => e.stopPropagation()} onClick={onHide}>
+          {onCopy && (
+            <select
+              className="slot__page"
+              aria-label={`Copy ${name} to a page`}
+              value=""
+              onPointerDown={(e) => e.stopPropagation()}
+              onChange={(e) => e.target.value !== '' && onCopy(Number(e.target.value))}
+            >
+              <option value="">Copy to…</option>
+              {pageNames.map((p, i) => (
+                <option key={i} value={i}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            className="slot__tool"
+            type="button"
+            aria-label={copy ? `Remove ${name}` : `Hide ${name}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={onHide}
+          >
             ×
           </button>
         </div>

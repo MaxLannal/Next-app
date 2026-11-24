@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   addPage,
+  baseOf,
   COLS,
+  copyPanel,
   DEFAULT_LAYOUT,
   deletePage,
   findPanel,
@@ -155,5 +157,22 @@ describe('arranging the dashboard by hand', () => {
     });
     expect(fixed.pages[0]!.panels).toHaveLength(2);
     tidy(fixed);
+  });
+
+  it('copies the time onto other pages, each copy its own panel, and a copy removed is gone', () => {
+    let layout = copyPanel(DEFAULT_LAYOUT, 'time', 1);
+    layout = copyPanel(layout, 'time', 2);
+    expect(findPanel(layout, 'time-2')!.page).toBe(1);
+    expect(findPanel(layout, 'time-3')!.page).toBe(2);
+    expect(baseOf('time-3')).toBe('time');
+    expect(findPanel(layout, 'time')!.page).toBe(0);
+    tidy(layout);
+    // The copies survive being stored and read back.
+    expect(normalizeLayout(JSON.parse(JSON.stringify(layout)))).toEqual(layout);
+    const fewer = hidePanel(layout, 'time-2');
+    expect(findPanel(fewer, 'time-2')).toBeNull();
+    expect(hiddenPanels(fewer)).toEqual([]);
+    // Only the time copies.
+    expect(copyPanel(DEFAULT_LAYOUT, 'goals', 1)).toBe(DEFAULT_LAYOUT);
   });
 });

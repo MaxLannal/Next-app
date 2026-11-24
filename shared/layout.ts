@@ -10,6 +10,12 @@
 
 export const PANEL_IDS = ['time', 'agenda', 'goals', 'focus', 'skills', 'heatmap', 'sleep', 'exercise', 'calendar', 'resources', 'media'] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
+/** The time can be on several pages at once: its copies are keyed "time-2" to "time-9". */
+export type PanelKey = PanelId | `time-${number}`;
+export const COPYABLE: readonly PanelId[] = ['time'];
+const COPY_KEY = /^time-[2-9]$/;
+/** The panel a key draws: a copy draws the panel it was copied from. */
+export const baseOf = (key: PanelKey): PanelId => (COPY_KEY.test(key) ? 'time' : (key as PanelId));
 
 export const COLS = 48;
 export const ROWS = 48;
@@ -26,7 +32,7 @@ const BOX_COLS = 24;
 const BOX_ROWS = 48;
 
 export type Rect = { x: number; y: number; w: number; h: number };
-export type PanelRect = Rect & { id: PanelId };
+export type PanelRect = Rect & { id: PanelKey };
 export type DashboardPage = { name: string; panels: PanelRect[] };
 export type DashboardLayout = { version: 3; pages: DashboardPage[] };
 
@@ -70,6 +76,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isPanelId = (v: unknown): v is PanelId => typeof v === 'string' && (PANEL_IDS as readonly string[]).includes(v);
+const isPanelKey = (v: unknown): v is PanelKey => isPanelId(v) || (typeof v === 'string' && COPY_KEY.test(v));
 const int = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : fallback);
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -139,12 +146,12 @@ export function normalizeLayout(input: unknown): DashboardLayout {
   if (!isRecord(input) || !Array.isArray(input.pages) || input.pages.length === 0) return structuredClone(DEFAULT_LAYOUT);
   const inBox = input.version !== 3;
   const rawPages: unknown[] = input.version === 2 || input.version === 3 ? input.pages : fromFlow(input.pages);
-  const seen = new Set<PanelId>();
+  const seen = new Set<PanelKey>();
   const pages = rawPages.slice(0, MAX_PAGES).map((raw, index): DashboardPage => {
     const page = isRecord(raw) ? raw : {};
     let panels: PanelRect[] = [];
     for (const p of Array.isArray(page.panels) ? page.panels : []) {
-      if (!isRecord(p) || !isPanelId(p.id) || seen.has(p.id)) continue;
+      if (!isRecord(p) || !isPanelKey(p.id) || seen.has(p.id)) continue;
       seen.add(p.id);
       const given = { id: p.id, x: int(p.x, 0), y: int(p.y, 0), w: int(p.w, 12), h: int(p.h, 20) };
       const rect = fitRect(inBox ? fromBox(given) : given);
@@ -207,12 +214,12 @@ function nearestFit(placed: Rect[], p: PanelRect): PanelRect {
  * free place nearest where it was (where it left, on a full page: the two trade places). The
  * panels it doesn't touch stay put.
  */
-export function settle(panels: PanelRect[], id: PanelId): PanelRect[] {
+export function settle(panels: PanelRect[], id: PanelKey): PanelRect[] {
   const held = panels.find((p) => p.id === id);
   if (!held) return panels;
   const others = panels.filter((p) => p.id !== id);
   const placed: PanelRect[] = [held, ...others.filter((p) => !overlaps(p, held))];
-  const moved = new Map<PanelId, PanelRect>();
+  const moved = new Map<PanelKey, PanelRect>();
   for (const p of others.filter((q) => overlaps(q, held)).sort((a, b) => a.y - b.y || a.x - b.x)) {
     const r = nearestFit(placed, p);
     placed.push(r);
@@ -234,7 +241,7 @@ export function hiddenPanels(layout: DashboardLayout): PanelId[] {
 }
 
 /** Where a panel is: its page and its rectangle, or null when it's hidden. */
-export function findPanel(layout: DashboardLayout, id: PanelId): { page: number; rect: PanelRect } | null {
+export function findPanel(layout: DashboardLayout, id: PanelKey): { page: number; rect: PanelRect } | null {
   for (let page = 0; page < layout.pages.length; page++) {
     const rect = layout.pages[page]!.panels.find((p) => p.id === id);
     if (rect) return { page, rect };
@@ -242,13 +249,13 @@ export function findPanel(layout: DashboardLayout, id: PanelId): { page: number;
   return null;
 }
 
-const without = (layout: DashboardLayout, id: PanelId) => layout.pages.map((p) => ({ ...p, panels: p.panels.filter((x) => x.id !== id) }));
+const without = (layout: DashboardLayout, id: PanelKey) => layout.pages.map((p) => ({ ...p, panels: p.panels.filter((x) => x.id !== id) }));
 
 /**
  * Puts a panel at `rect` on `page`, from wherever it was (another page, or hidden), and moves the
  * panels there out of its way. Moving or resizing in place is the same call.
  */
-export function placePanel(layout: DashboardLayout, id: PanelId, page: number, rect: Rect): DashboardLayout {
+export function placePanel(layout: DashboardLayout, id: PanelKey, page: number, rect: Rect): DashboardLayout {
   if (page < 0 || page >= layout.pages.length) return layout;
   const pages = without(layout, id);
   const target = pages[page]!;
@@ -256,23 +263,44 @@ export function placePanel(layout: DashboardLayout, id: PanelId, page: number, r
   return { version: 3, pages };
 }
 
-/** Puts a hidden panel back on `page`, in the first place a good size of it fits. */
-export function showPanel(layout: DashboardLayout, id: PanelId, page: number): DashboardLayout {
-  const panels = layout.pages[page]?.panels ?? [];
-  for (const [w, h] of [
-    [21, 16],
-    [14, 12],
-    [10, 9],
-    [MIN_W, MIN_H],
-  ] as const) {
+/** Puts a panel on `page` in the first place it fits at the first of `sizes` that does. */
+function putWhereItFits(layout: DashboardLayout, id: PanelKey, page: number, sizes: (readonly [number, number])[]): DashboardLayout {
+  const panels = (layout.pages[page]?.panels ?? []).filter((p) => p.id !== id);
+  for (const [w, h] of sizes) {
     const spot = freeSpot(panels, w, h);
     if (spot) return placePanel(layout, id, page, { ...spot, w, h });
   }
-  return placePanel(layout, id, page, { x: BOX.x, y: BOX.y, w: 21, h: 16 });
+  const [w, h] = sizes[0]!;
+  return placePanel(layout, id, page, { x: BOX.x, y: BOX.y, w, h });
 }
 
-/** Takes a panel off its page; it waits among the hidden ones. */
-export function hidePanel(layout: DashboardLayout, id: PanelId): DashboardLayout {
+const GOOD_SIZES = [
+  [21, 16],
+  [14, 12],
+  [10, 9],
+  [MIN_W, MIN_H],
+] as const;
+
+/** Puts a hidden panel back on `page`, in the first place a good size of it fits. */
+export function showPanel(layout: DashboardLayout, id: PanelId, page: number): DashboardLayout {
+  return putWhereItFits(layout, id, page, [...GOOD_SIZES]);
+}
+
+/**
+ * A copy of a panel that can be on several pages (the time), put on `page` at the original's size
+ * where that fits, or smaller; none past the last copy there can be.
+ */
+export function copyPanel(layout: DashboardLayout, id: PanelKey, page: number): DashboardLayout {
+  const from = findPanel(layout, id);
+  if (!from || !COPYABLE.includes(baseOf(id)) || page < 0 || page >= layout.pages.length) return layout;
+  const taken = new Set(layout.pages.flatMap((p) => p.panels.map((x) => x.id)));
+  const key = [2, 3, 4, 5, 6, 7, 8, 9].map((n) => `${baseOf(id)}-${n}` as PanelKey).find((k) => !taken.has(k));
+  if (!key) return layout;
+  return putWhereItFits(layout, key, page, [[from.rect.w, from.rect.h], ...GOOD_SIZES]);
+}
+
+/** Takes a panel off its page; it waits among the hidden ones (a copy is simply gone). */
+export function hidePanel(layout: DashboardLayout, id: PanelKey): DashboardLayout {
   return { version: 3, pages: without(layout, id) };
 }
 

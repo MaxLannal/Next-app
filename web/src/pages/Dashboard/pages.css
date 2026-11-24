@@ -35,6 +35,8 @@
 .slot--time > .slot__body { align-content: center; }
 .slot--time .time__clock.num { font-size: min(clamp(3.5rem, 5vw + 1rem, 6rem), 17cqw, 40cqh); }
 .slot--time .time__date { font-size: min(clamp(1.375rem, 0.8vw + 1rem, 1.75rem), 6cqw); }
+.slot--time .time__clock.num { margin-top: min(var(--space-sm), 2cqh); }
+.slot--time .time__year { margin-top: min(var(--space-lg), 5cqh); font-size: min(clamp(1.0625rem, 0.3vw + 1rem, 1.25rem), 5cqw); }
 
 /* Half a gap all round, so a panel at an edge sits a gap's width from the window's edge. */
 .dash-page { position: relative; padding: calc(var(--gap) / 2); }

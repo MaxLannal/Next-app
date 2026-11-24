@@ -11,6 +11,7 @@ import {
   showPanel,
   type DashboardLayout,
   type PanelId,
+  type PanelKey,
   type Rect,
 } from '@shared/layout.ts';
 
@@ -25,7 +26,7 @@ const DOT_REACH = 18;
 export type Edges = { n?: boolean; s?: boolean; e?: boolean; w?: boolean };
 
 type Drag = {
-  id: PanelId;
+  id: PanelKey;
   kind: 'move' | 'resize';
   /** The layout as it was when the press began; every step is laid out afresh from it. */
   start: DashboardLayout;
@@ -151,7 +152,7 @@ export function useArrange(layout: DashboardLayout, change: (next: DashboardLayo
       if (!d || !commit) return;
       // A click on a hidden panel in the bar puts it back on the page showing.
       if (!d.moved) {
-        if (d.from === null) changeRef.current(showPanel(d.start, d.id, pagerRef.current.page));
+        if (d.from === null) changeRef.current(showPanel(d.start, d.id as PanelId, pagerRef.current.page));
         return;
       }
       changeRef.current(placePanel(d.start, d.id, d.page, d.rect));
@@ -181,7 +182,7 @@ export function useArrange(layout: DashboardLayout, change: (next: DashboardLayo
   }, [pager.page]);
 
   /** A press on a panel: a move, or a resize when it's on one of its edges. */
-  const press = (e: ReactPointerEvent<HTMLElement>, id: PanelId, edges: Edges | null = null) => {
+  const press = (e: ReactPointerEvent<HTMLElement>, id: PanelKey, edges: Edges | null = null) => {
     if (e.button !== 0) return;
     const found = findPanel(layout, id);
     if (!found) return;
@@ -203,7 +204,7 @@ export function useArrange(layout: DashboardLayout, change: (next: DashboardLayo
   };
 
   /** Arrow keys on a panel's grip: a cell at a time; with Shift, its size. */
-  const nudge = (e: ReactKeyboardEvent, id: PanelId) => {
+  const nudge = (e: ReactKeyboardEvent, id: PanelKey) => {
     const step = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number]>)[e.key];
     const found = findPanel(layout, id);
     if (!step || !found) return;

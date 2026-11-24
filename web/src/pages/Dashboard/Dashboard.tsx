@@ -1,5 +1,19 @@
 import { useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { addPage, deletePage, hiddenPanels, hidePanel, MAX_PAGES, placePanel, renamePage, showPanel, type PanelId, type PanelRect } from '@shared/layout.ts';
+import {
+  addPage,
+  baseOf,
+  copyPanel,
+  COPYABLE,
+  deletePage,
+  hiddenPanels,
+  hidePanel,
+  MAX_PAGES,
+  placePanel,
+  renamePage,
+  showPanel,
+  type PanelId,
+  type PanelRect,
+} from '@shared/layout.ts';
 import { useCurrentSession } from './focus/useSessions.ts';
 import { ResourcesPanel } from './resources/ResourcesPanel.tsx';
 import { CalendarPanel } from './calendar/CalendarPanel.tsx';
@@ -79,7 +93,7 @@ export function Dashboard() {
 
   const slot = (p: PanelRect, page: number, media: PanelRect | undefined) => {
     const lifted = drag?.id === p.id && drag.moved ? drag.lifted : null;
-    const classes = ['slot', `slot--${p.id}`];
+    const classes = ['slot', `slot--${baseOf(p.id)}`];
     if (editing) classes.push('is-editing');
     if (lifted) classes.push('is-lifted');
     if (drag?.id === p.id && drag.kind === 'resize') classes.push('is-sizing');
@@ -98,7 +112,7 @@ export function Dashboard() {
         onPointerDown={editing ? (e) => arrange.press(e, p.id) : undefined}
       >
         <div className="slot__body" inert={editing}>
-          {PANELS[p.id]()}
+          {PANELS[baseOf(p.id)]()}
         </div>
         {editing && (
           <SlotTools
@@ -111,6 +125,14 @@ export function Dashboard() {
               change(placePanel(layout, p.id, to, p));
               pager.go(to);
             }}
+            onCopy={
+              COPYABLE.includes(baseOf(p.id))
+                ? (to) => {
+                    change(copyPanel(layout, p.id, to));
+                    pager.go(to);
+                  }
+                : undefined
+            }
             onHide={() => change(hidePanel(layout, p.id))}
           />
         )}
