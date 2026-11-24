@@ -8,7 +8,17 @@ import { UnavailableError } from '../context.ts';
 
 type AnthropicConfig = HubConfig['anthropic'];
 
-const READ_SYSTEM = "You read photos of someone's finished work. If the photo shows handwritten or printed mathematics or technical writing, transcribe it faithfully into LaTeX body content (no preamble), preserving line structure with align* where natural; set kind to latex and caption to a one-line description. Otherwise set kind to caption, write a one-line description, and leave latex empty. Never invent content that is not visible.";
+const READ_SYSTEM = [
+  "You read photos and scans of someone's finished work: homework, proofs, notes.",
+  'If the page shows handwritten or printed mathematics or technical writing, transcribe all of it faithfully as LaTeX body content: no preamble, no \\documentclass, no \\begin{document}.',
+  'Write words as plain text and every piece of math in math mode: inline math in $...$, displayed equations in \\[...\\], and multi-line working in \\begin{align*}...\\end{align*}.',
+  'Keep the order and structure of the page: put each problem number or part in bold on its own line (\\textbf{7.1}, \\textbf{(a)}), and give each step its own paragraph, separated by a blank line.',
+  'It is shown with KaTeX, so use only standard amsmath and amssymb commands: no other packages, no TikZ, no \\label. Describe a drawing in one short line, like [Figure: graph of f with zeros at a, b, c].',
+  'Leave out crossed-out writing. If a symbol is unclear, choose the reading that makes the mathematics consistent.',
+  'Set kind to latex and caption to a one-line description.',
+  'If the page holds no mathematics or technical writing, set kind to caption, write a one-line description, and leave latex empty.',
+  'Never invent content that is not on the page.',
+].join(' ');
 const JSON_SUFFIX = 'Reply with only a JSON object with keys kind, latex, caption';
 
 const Reading = z.object({
@@ -17,7 +27,7 @@ const Reading = z.object({
   caption: z.string(),
 });
 
-const MODEL_MISSING = 'Model not found on the gateway';
+export const MODEL_MISSING = 'Model not found on the gateway';
 
 function onGatewayMissingModel(err: unknown): never {
   if (err instanceof Anthropic.NotFoundError) throw new UnavailableError(MODEL_MISSING);
@@ -46,13 +56,18 @@ export function createClaudeClient(cfg: AnthropicConfig): ClaudeClient {
   const model = cfg.model;
 
   async function readImage(img: Parameters<ClaudeClient['readImage']>[0]) {
-    const image = { type: 'image' as const, source: { type: 'base64' as const, media_type: img.mediaType, data: img.data.toString('base64') } };
+    const data = img.data.toString('base64');
+    // A photo goes as an image; a scanned PDF as a document, which Claude reads page by page.
+    const image =
+      img.mediaType === 'application/pdf'
+        ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data } }
+        : { type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data } };
     try {
       const message = await client.messages.parse({
         model,
         max_tokens: 16000,
         system: READ_SYSTEM,
-        messages: [{ role: 'user', content: [image, { type: 'text', text: 'Read this photo.' }] }],
+        messages: [{ role: 'user', content: [image, { type: 'text', text: 'Read this page.' }] }],
         output_config: { format: zodOutputFormat(Reading) },
       });
       const reading = message.parsed_output;
@@ -70,7 +85,7 @@ export function createClaudeClient(cfg: AnthropicConfig): ClaudeClient {
           model,
           max_tokens: 16000,
           system: `${READ_SYSTEM} ${JSON_SUFFIX}`,
-          messages: [{ role: 'user', content: [image, { type: 'text', text: 'Read this photo.' }] }],
+          messages: [{ role: 'user', content: [image, { type: 'text', text: 'Read this page.' }] }],
         });
         const text = message.content.map((block) => (block.type === 'text' ? block.text : '')).join('');
         return toReading(parseReading(text));

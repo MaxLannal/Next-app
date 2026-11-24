@@ -16,7 +16,8 @@ export class UnavailableError extends Error {
 }
 
 export type ClaudeClient = {
-  readImage(img: { data: Buffer; mediaType: 'image/jpeg' }): Promise<ImageReading>;
+  /** Reads a photo (a JPEG) or a scanned PDF for the math in it. */
+  readImage(img: { data: Buffer; mediaType: 'image/jpeg' | 'application/pdf' }): Promise<ImageReading>;
   streamTurn(
     p: {
       /** Blocks let the caller mark the prompt for caching. */

@@ -15,7 +15,7 @@ import {
   updateAttachment,
   type AttachmentFilter,
 } from '../repo/attachments.ts';
-import { isDerivedLatex, processImage, rewriteLatexFile } from '../services/vision.ts';
+import { isDerivedLatex, processImage, readable, rewriteLatexFile } from '../services/vision.ts';
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 const ID = '/:id{[0-9]+}';
@@ -140,11 +140,11 @@ export function attachmentRoutes(ctx: AppContext): Hono {
     return c.json(updateAttachment(ctx, id, { extractedText, sessionId }));
   });
 
-  // Read a photo again: the earlier reading is replaced once the new one lands.
+  // Read a photo or PDF again: the earlier reading is replaced once the new one lands.
   routes.post(`${ID}/vision`, (c) => {
     const attachment = getAttachment(ctx, Number(c.req.param('id')));
     if (!attachment) return c.json({ error: 'Not found' }, 404);
-    if (attachment.kind !== 'image' || attachment.parentId !== null) return c.json({ error: 'Not a photo' }, 400);
+    if (!readable(attachment.kind) || attachment.parentId !== null) return c.json({ error: 'Not a photo or PDF' }, 400);
     ctx.jobs.enqueue('vision', () => processImage(ctx, attachment.id));
     return c.body(null, 202);
   });

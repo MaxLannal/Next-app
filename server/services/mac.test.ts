@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,6 +6,7 @@ import type { CalendarEvent } from '../../shared/types.ts';
 import { UnavailableError } from '../context.ts';
 import { hubPaths, type HubPaths } from '../paths.ts';
 import { createMacBridge, execFileRun, type Run } from './mac.ts';
+import { jpegOrientation } from '../lib/jpeg.ts';
 
 const FROM = new Date('2026-11-22T06:00:00.000Z');
 const TO = new Date('2026-11-23T06:00:00.000Z');
@@ -175,6 +176,27 @@ describe('images', () => {
     await bridge(run).convertImage('forest.jpg', 'forest-out.jpg', 3840);
 
     expect(calls.at(-1)).toEqual({ cmd: 'sips', args: ['-s', 'format', 'jpeg', 'forest.jpg', '--out', 'forest-out.jpg'] });
+  });
+
+  it('convertImage turns an iPhone photo upright for real, and says it is upright', async () => {
+    // A JPEG whose EXIF says "turn me 90°", as sips writes one from an iPhone's HEIC.
+    const sideways = Buffer.from([
+      0xff, 0xd8, 0xff, 0xe1, 0x00, 0x22, 0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
+      0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0xff, 0xda, 0x00, 0x02,
+    ]);
+    const dest = join(dir, 'IMG_1950.jpg');
+    const calls: { cmd: string; args: string[] }[] = [];
+    const run: Run = async (cmd, args) => {
+      calls.push({ cmd, args });
+      if (args.includes('--out')) writeFileSync(dest, sideways);
+      return { code: 0, stdout: '', stderr: '' };
+    };
+
+    await bridge(run).convertImage(join(dir, 'IMG_1950.HEIC'), dest, 2000);
+
+    expect(calls.at(-1)).toEqual({ cmd: 'sips', args: ['-r', '90', dest] });
+    expect(jpegOrientation(readFileSync(dest))?.value).toBe(1);
   });
 
   it('convertImage fails when sips fails', async () => {

@@ -68,6 +68,8 @@ export type Resource = {
 // --- Task 6 ---
 
 /** A stored file. `url` serves the original; `previewUrl` is set once a HEIC/HEIF preview exists. */
+export type VisionError = 'balance' | 'auth' | 'model' | 'setup' | 'unreachable' | 'unreadable';
+
 export type Attachment = {
   id: number;
   sessionId: number | null;
@@ -80,6 +82,9 @@ export type Attachment = {
   source: 'upload' | 'github';
   extractedText: string;
   visionStatus: 'pending' | 'done' | 'failed' | null;
+  /** Why the last reading failed: the gateway's balance ran out, it refused the token, it lacks the
+   *  model, Claude isn't set up, it couldn't be reached, or the page couldn't be read. */
+  visionError: VisionError | null;
   repoPath: string | null;
   repoState: 'pending' | 'synced' | 'failed' | 'removed' | null;
   url: string;

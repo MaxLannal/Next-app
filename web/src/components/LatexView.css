@@ -8,8 +8,12 @@
 .latex__head .btn-sm { min-height: 32px; padding: 0 var(--space-md); font-size: var(--text-sm); }
 
 .latex__body { overflow-x: auto; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-inner); background: color-mix(in oklab, var(--color-light) 4%, transparent); color: var(--color-ink); }
-.latex__body .katex { font-size: 1.15em; }
-.latex__body .katex-display { margin: 0; }
+.latex__body { display: grid; gap: var(--space-sm); font-size: 0.9375rem; line-height: 1.6; }
+.latex__body p { margin: 0; }
+.latex__body .katex { font-size: 1.1em; }
+.latex__display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.latex__display .katex-display { margin: 0; }
+.latex__heading { display: block; margin-top: var(--space-xs); font: 500 1rem/1.4 var(--font-display); }
 
 .latex__source { margin: 0; overflow-x: auto; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-inner); background: color-mix(in oklab, var(--color-shade) 40%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 8%, transparent); color: var(--color-ink-2); font: 400 0.875rem/1.6 ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; white-space: pre-wrap; overflow-wrap: anywhere; }
 

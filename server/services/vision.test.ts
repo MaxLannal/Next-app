@@ -348,7 +348,7 @@ describe('createClaudeClient.readImage', () => {
     expect(body.max_tokens).toBe(16000);
     const blocks = (body.messages as { content: { type: string; source?: Record<string, string> }[] }[])[0]!.content;
     expect(blocks[0]).toMatchObject({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'anBlZw==' } });
-    expect(String(body.system)).toContain('You read photos of someone');
+    expect(String(body.system)).toContain('You read photos and scans of someone');
   });
 
   it('retries as JSON text when the gateway rejects structured output', async () => {
@@ -419,5 +419,110 @@ describe('streamTurn', () => {
       .streamTurn({ system: '', messages: [], tools: [] }, () => {})
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UnavailableError);
+  });
+});
+
+async function uploadFile(name: string, body: string): Promise<Attachment> {
+  const form = new FormData();
+  form.append('files', new File([body], name));
+  const res = await t.req('POST', '/api/attachments', form);
+  return ((await res.json()) as Attachment[])[0]!;
+}
+
+/** A PDF with `n` page objects, as far as the page count can see. */
+const pdfOf = (n: number) => `%PDF-1.7\n${Array.from({ length: n }, (_, i) => `${i + 3} 0 obj << /Type /Page /Parent 2 0 R >> endobj`).join('\n')}\n2 0 obj << /Type /Pages /Count ${n} >> endobj\n%%EOF`;
+
+describe('scanned PDFs to LaTeX', () => {
+  it('reads a scanned PDF whole, as a document, into a .tex beside it', async () => {
+    const asked: string[] = [];
+    t.fakes.claude.readImage = async (img) => {
+      asked.push(img.mediaType);
+      return { kind: 'latex', latex: '\\textbf{7.1} Let $a<b$.' };
+    };
+    const pdf = await uploadFile('HW7 scan.pdf', pdfOf(2));
+    await t.jobs.drain();
+    expect(asked).toEqual(['application/pdf']);
+    expect((await getAttachment(pdf.id)).visionStatus).toBe('done');
+    expect(childOf(pdf.id)?.filename).toBe('HW7 scan.tex');
+    expect(readStored(childOf(pdf.id)!.id)).toBe(TEX_TEMPLATE('\\textbf{7.1} Let $a<b$.'));
+  });
+
+  it('reads its first page as a photo when the gateway refuses a PDF', async () => {
+    const asked: string[] = [];
+    t.fakes.claude.readImage = async (img) => {
+      asked.push(img.mediaType);
+      if (img.mediaType === 'application/pdf') throw Object.assign(new Error('documents not supported'), { status: 400 });
+      return { kind: 'latex', latex: 'x=1' };
+    };
+    const pdf = await uploadFile('page.pdf', pdfOf(1));
+    await t.jobs.drain();
+    expect(asked).toEqual(['application/pdf', 'image/jpeg']);
+    expect((await getAttachment(pdf.id)).visionStatus).toBe('done');
+  });
+
+  it('leaves a long PDF (a book, not a scan) unread', async () => {
+    let asked = 0;
+    t.fakes.claude.readImage = async () => {
+      asked += 1;
+      return { kind: 'latex', latex: 'x' };
+    };
+    const book = await uploadFile('textbook.pdf', pdfOf(40));
+    await t.jobs.drain();
+    expect(asked).toBe(0);
+    expect((await getAttachment(book.id)).visionStatus).toBeNull();
+  });
+});
+
+describe('when a reading fails', () => {
+  const payment = () => Object.assign(new Error('402 insufficient balance'), { status: 402 });
+
+  it('says why: the gateway out of balance, refusing the token, missing the model, or out of reach', async () => {
+    const { whyFailed } = await import('./vision.ts');
+    expect(whyFailed(payment())).toBe('balance');
+    expect(whyFailed(Object.assign(new Error('no'), { status: 401 }))).toBe('auth');
+    expect(whyFailed(new UnavailableError('Model not found on the gateway'))).toBe('model');
+    expect(whyFailed(new UnavailableError('Claude is not set up yet'))).toBe('setup');
+    expect(whyFailed(Object.assign(new Error('busy'), { status: 529 }))).toBe('unreachable');
+    expect(whyFailed(Object.assign(new Error('x'), { name: 'APIConnectionError' }))).toBe('unreachable');
+    expect(whyFailed(new Error('The gateway replied without a JSON object'))).toBe('unreadable');
+
+    t.fakes.claude.readImage = async () => {
+      throw payment();
+    };
+    const { list } = await uploadImage();
+    await t.jobs.drain();
+    const photo = await getAttachment(list[0]!.id);
+    expect([photo.visionStatus, photo.visionError]).toEqual(['failed', 'balance']);
+  });
+
+  it('tries again by itself once the cause passes: one first, the rest once that one lands', async () => {
+    const { retryWaitingReadings } = await import('./vision.ts');
+    t.fakes.claude.readImage = async () => {
+      throw payment();
+    };
+    const a = (await uploadImage('IMG_1.HEIC')).list[0]!;
+    const b = (await uploadImage('IMG_2.HEIC')).list[0]!;
+    const broken = (await uploadImage('IMG_3.HEIC')).list[0]!;
+    await t.jobs.drain();
+    t.db.prepare("UPDATE attachments SET vision_error = 'unreadable' WHERE id = ?").run(broken.id);
+
+    // Still out of balance: only the oldest is asked.
+    let asks = 0;
+    t.fakes.claude.readImage = async () => {
+      asks += 1;
+      throw payment();
+    };
+    await retryWaitingReadings(t);
+    await t.jobs.drain();
+    expect(asks).toBe(1);
+
+    // Topped up: the oldest lands, then the other waiting one; an unreadable photo isn't tried again.
+    t.fakes.claude.readImage = async () => ({ kind: 'latex', latex: 'f(a)=f(b)=0' });
+    await retryWaitingReadings(t);
+    await t.jobs.drain();
+    expect((await getAttachment(a.id)).visionStatus).toBe('done');
+    expect((await getAttachment(b.id)).visionStatus).toBe('done');
+    expect((await getAttachment(a.id)).visionError).toBeNull();
+    expect((await getAttachment(broken.id)).visionStatus).toBe('failed');
   });
 });

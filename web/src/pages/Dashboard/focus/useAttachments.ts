@@ -5,6 +5,9 @@ import { api, ApiError } from '../../../api.ts';
 
 const isNotYetFiled = (err: unknown) => err instanceof ApiError && err.status === 404;
 
+/** What the hub reads for the math in it: photos (HEIC, JPEG, PNG…) and scanned PDFs. */
+export const isReadable = (a: Attachment) => (a.kind === 'image' || a.kind === 'pdf') && a.parentId === null;
+
 /** The files on one session, re-read while a reading is still on its way. */
 export function useSessionAttachments(sessionId: number) {
   const query = useQuery({
@@ -18,7 +21,7 @@ export function useSessionAttachments(sessionId: number) {
     retry: (failures, err) => !isNotYetFiled(err) && failures < 2,
   });
 
-  const waiting = (query.data ?? []).some((a) => a.kind === 'image' && a.visionStatus === 'pending');
+  const waiting = (query.data ?? []).some((a) => isReadable(a) && a.visionStatus === 'pending');
   const { refetch } = query;
   useEffect(() => {
     if (!waiting) return;
@@ -72,9 +75,9 @@ export function useRetryReading(sessionId: number) {
   });
 }
 
-/** The derived `.tex` child of a photo, once its reading is done and the text is there. */
+/** The derived `.tex` child of a photo or PDF, once its reading is done and the text is there. */
 export function latexChild(photo: Attachment, all: Attachment[]): Attachment | null {
-  if (photo.kind !== 'image' || photo.visionStatus !== 'done') return null;
+  if (!isReadable(photo) || photo.visionStatus !== 'done') return null;
   const child = all.find((a) => a.parentId === photo.id && a.kind === 'latex');
   return child !== undefined && child.extractedText.trim() !== '' ? child : null;
 }

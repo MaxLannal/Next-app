@@ -7,7 +7,7 @@ import { formatClock, formatDuration, formatShortDate, timeValue } from '../../.
 import { CameraCapture } from './CameraCapture.tsx';
 import { FileDrop } from './FileDrop.tsx';
 import { endAfter, startBefore } from './sessionTimes.ts';
-import { latexChild, useEditReading, useRetryReading, useSessionAttachments, useUpload } from './useAttachments.ts';
+import { isReadable, latexChild, useEditReading, useRetryReading, useSessionAttachments, useUpload } from './useAttachments.ts';
 import './focus.css';
 
 /** Past this many focused seconds the end time probably caught a forgotten stop. */
@@ -115,8 +115,9 @@ function WrapUpBody({ session: first, onClose, onSaved }: Omit<WrapUpSheetProps,
     );
   };
 
-  const photos = files.filter((a) => a.kind === 'image' && a.parentId === null);
-  const others = files.filter((a) => !(a.kind === 'image' && a.parentId === null) && a.kind !== 'latex');
+  // Photos and scanned PDFs are read for the math in them; their readings show beneath them.
+  const photos = files.filter(isReadable);
+  const others = files.filter((a) => !isReadable(a) && a.kind !== 'latex');
   // A derived `.tex` is shown under its photo, never twice.
   const shown = files.filter((a) => a.kind !== 'latex');
 
@@ -320,9 +321,26 @@ function WrapUpBody({ session: first, onClose, onSaved }: Omit<WrapUpSheetProps,
 }
 
 function photoStatus(photo: Attachment): string {
+  const what = photo.kind === 'pdf' ? 'PDF' : 'photo';
   if (photo.visionStatus === 'pending') return 'Reading…';
-  if (photo.visionStatus === 'failed') return 'Couldn’t read this photo — retry';
-  return photo.visionStatus === 'done' ? 'Read' : 'Photo';
+  if (photo.visionStatus === 'failed') {
+    switch (photo.visionError) {
+      case 'balance':
+        return 'Waiting for Claude: the gateway is out of balance. Top it up and this reads by itself.';
+      case 'unreachable':
+        return 'Couldn’t reach Claude. Trying again by itself.';
+      case 'auth':
+        return 'The Claude gateway refused the hub’s token. Check it in Settings, then retry.';
+      case 'model':
+        return 'The Claude model isn’t on the gateway. Check it in Settings, then retry.';
+      case 'setup':
+        return 'Claude isn’t set up yet. Set it up in Settings, then retry.';
+      default:
+        return `Couldn’t read this ${what} — retry`;
+    }
+  }
+  if (photo.visionStatus === 'done') return 'Read';
+  return photo.kind === 'pdf' ? 'PDF' : 'Photo';
 }
 
 function kindWord(kind: Attachment['kind']): string {

@@ -526,6 +526,21 @@ describe('WrapUpSheet readings', () => {
     expect(await screen.findByText('Couldn’t read this photo — retry')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Retry' }).length).toBe(1);
   });
+
+  it('says when the gateway ran out of balance, and shows a read PDF’s math typeset', async () => {
+    const base = { sessionId: 9, size: 1024, createdAt: '2026-11-24T04:46:00.000Z', source: 'upload', repoPath: null, repoState: null, previewUrl: null } as const;
+    const waiting = { ...base, id: 2, parentId: null, kind: 'image', filename: 'IMG_1950.HEIC', mime: 'image/heic', extractedText: '', visionStatus: 'failed', visionError: 'balance', url: '/api/attachments/2/file' } as Attachment;
+    const scan = { ...base, id: 3, parentId: null, kind: 'pdf', filename: 'HW7.pdf', mime: 'application/pdf', extractedText: 'Handwritten work', visionStatus: 'done', visionError: null, url: '/api/attachments/3/file' } as Attachment;
+    const tex = { ...base, id: 4, parentId: 3, kind: 'latex', filename: 'HW7.tex', mime: 'application/x-tex', extractedText: '\\textbf{7.1} By Rolle, $f\'(d)=0$.', visionStatus: null, visionError: null, url: '/api/attachments/4/file' } as Attachment;
+    stubHub({ 'GET /api/attachments?sessionId=9': () => json([waiting, scan, tex]) });
+    const done: FocusSession = { ...running, id: 9, status: 'done', focusSeconds: 300 };
+    renderApp(<WrapUpSheet session={done} open onClose={() => {}} />);
+
+    expect(await screen.findByText(/the gateway is out of balance/)).toBeTruthy();
+    expect(screen.getByText('HW7.pdf')).toBeTruthy();
+    expect(document.querySelector('.latex__body strong')?.textContent).toBe('7.1');
+    expect(document.querySelector('.latex__body .katex')).not.toBeNull();
+  });
 });
 
 describe('FocusPanel history', () => {

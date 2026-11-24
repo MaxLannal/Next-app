@@ -54,6 +54,7 @@ type AttachmentRow = {
   source: Attachment['source'];
   extracted_text: string;
   vision_status: Attachment['visionStatus'];
+  vision_error: Attachment['visionError'];
   repo_path: string | null;
   repo_state: Attachment['repoState'];
   created_at: string;
@@ -72,6 +73,7 @@ function toAttachment(r: AttachmentRow): Attachment {
     source: r.source,
     extractedText: r.extracted_text,
     visionStatus: r.vision_status,
+    visionError: r.vision_error ?? null,
     repoPath: r.repo_path,
     repoState: r.repo_state,
     url: `/api/attachments/${r.id}/file`,

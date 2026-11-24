@@ -12,7 +12,7 @@ import { createJobQueue } from './services/jobs.ts';
 import { createMacBridge } from './services/mac.ts';
 import { createClaudeClient } from './services/claude.ts';
 import { startRoutines } from './services/routines.ts';
-import { registerVision } from './services/vision.ts';
+import { registerVision, retryWaitingReadings } from './services/vision.ts';
 
 const PULL_EVERY_MS = 2 * 60_000;
 
@@ -50,6 +50,14 @@ startRoutines(ctx);
   if (anthropic.baseURL && anthropic.authToken) ctx.claude = createClaudeClient(anthropic);
 }
 registerVision();
+// Readings that failed while the gateway was out of balance or out of reach are tried again by
+// themselves: once soon after boot (with any a restart left half-done), then every 10 minutes.
+{
+  const retry = (leftover: boolean) =>
+    void retryWaitingReadings(ctx, { leftover }).catch((err: unknown) => console.error('Retrying readings failed', err));
+  setTimeout(() => retry(true), 20_000).unref();
+  setInterval(() => retry(false), 10 * 60_000).unref();
+}
 
 // Pulls what was committed elsewhere every 2 minutes. The queue makes it wait for a running push.
 const pullTimer = setInterval(() => {

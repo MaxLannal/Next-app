@@ -1,6 +1,6 @@
-import katex from 'katex';
 import { useMemo, useState } from 'react';
 import 'katex/dist/katex.min.css';
+import { latexToHtml } from './latexHtml.ts';
 import './LatexView.css';
 
 type LatexViewProps = {
@@ -11,16 +11,13 @@ type LatexViewProps = {
 };
 
 /**
- * A LaTeX reading, rendered with KaTeX. "Source" swaps the typeset view for
+ * A LaTeX reading, typeset: its words as text and its math with KaTeX (latexToHtml). "Source" swaps the typeset view for
  * the plain text; Edit hands the text to `onEdit`; Retry asks for a new reading
  * of the photo (shown once a reading has been made and only when offered).
  */
 export function LatexView({ latex, onEdit, onRetry }: LatexViewProps) {
   const [source, setSource] = useState(false);
-  const rendered = useMemo(
-    () => ({ __html: katex.renderToString(latex, { displayMode: true, throwOnError: false }) }),
-    [latex],
-  );
+  const rendered = useMemo(() => ({ __html: latexToHtml(latex) }), [latex]);
 
   return (
     <figure className="latex">

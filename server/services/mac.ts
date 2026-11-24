@@ -1,9 +1,11 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CalendarEvent, NowPlaying } from '../../shared/types.ts';
 import { UnavailableError, type MacBridge } from '../context.ts';
 import type { HubPaths } from '../paths.ts';
+import { jpegOrientation, setJpegOrientation, TURN_FOR } from '../lib/jpeg.ts';
 
 /** Runs a program to completion. Never rejects: a program that can't start or is stopped gets a shell-style code. */
 export type Run = (
@@ -118,6 +120,24 @@ export function createMacBridge(
       });
       if (out.code === NOT_FOUND) throw new UnavailableError('sips is not available on this machine');
       if (out.code !== 0) throw new Error(`sips couldn't convert the image (exit ${out.code}): ${out.stderr.trim()}`);
+      // An iPhone photo's pixels come out sideways with a "turn me" tag: turn them upright for real
+      // (sips leaves the tag), then say so, so nothing turns it twice.
+      // Turning it is a nicety: a JPEG that can't be read back here is left as sips wrote it.
+      const orientation = (() => {
+        try {
+          return jpegOrientation(readFileSync(dest))?.value ?? 1;
+        } catch {
+          return 1;
+        }
+      })();
+      const turn = TURN_FOR[orientation];
+      if (turn !== undefined) {
+        const rotated = await run('sips', ['-r', String(turn), dest], { timeoutMs: 60_000 });
+        if (rotated.code === 0) {
+          const bytes = readFileSync(dest);
+          if (setJpegOrientation(bytes, 1)) writeFileSync(dest, bytes);
+        }
+      }
     },
 
     // ── Media ─────────────────────────────────────────────────────────────

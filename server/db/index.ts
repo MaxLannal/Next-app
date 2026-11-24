@@ -10,6 +10,7 @@ const MIGRATIONS = [
   readFileSync(new URL('./traces.sql', import.meta.url), 'utf8'), // v5: traces, the places on the globe
   readFileSync(new URL('./skill-sizes.sql', import.meta.url), 'utf8'), // v6: skill cards sized by hand
   readFileSync(new URL('./skill-resources.sql', import.meta.url), 'utf8'), // v7: resources attached to experiences
+  readFileSync(new URL('./vision-errors.sql', import.meta.url), 'utf8'), // v8: why a reading failed
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 
