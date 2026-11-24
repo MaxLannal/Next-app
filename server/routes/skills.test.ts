@@ -147,3 +147,22 @@ describe('skills', () => {
     expect(board.nodes[0].session?.files).toHaveLength(2);
   });
 });
+
+describe('sizing a card by its edges', () => {
+  it('keeps a width and height set by hand, clears them back to the text size, and refuses silly ones', async () => {
+    const s = await skill();
+    const step = await json<SkillNode>(await post(`/api/skills/${s.id}/nodes`, { kind: 'step', title: 'Rolle', layer: 0, x: 0, y: 80 }));
+    expect([step.w, step.h]).toEqual([null, null]);
+
+    const sized = await json<SkillNode>(await t.req('PATCH', `/api/skills/nodes/${step.id}`, { w: 420, h: 210, x: -20 }));
+    expect([sized.w, sized.h, sized.x, sized.title]).toEqual([420, 210, -20, 'Rolle']);
+    const board = await json<SkillBoard>(await t.req('GET', `/api/skills/${s.id}`));
+    expect(board.nodes[0]).toMatchObject({ w: 420, h: 210 });
+
+    const back = await json<SkillNode>(await t.req('PATCH', `/api/skills/nodes/${step.id}`, { w: null, h: null }));
+    expect([back.w, back.h]).toEqual([null, null]);
+
+    expect((await t.req('PATCH', `/api/skills/nodes/${step.id}`, { w: 40 })).status).toBe(400);
+    expect((await t.req('PATCH', `/api/skills/nodes/${step.id}`, { h: 'tall' })).status).toBe(400);
+  });
+});

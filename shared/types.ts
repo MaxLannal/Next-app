@@ -336,6 +336,10 @@ export type SkillNode = {
   /** `y` is measured from the top of the node's stage; stages grow with what they hold. */
   x: number;
   y: number;
+  /** A size set by dragging the card's edges: its width, and the least height it stands; null
+   *  for the size its text gives it. */
+  w: number | null;
+  h: number | null;
   /** The day a step was completed, as a day key ("2026-11-23"); null for an experience. */
   completedOn: string | null;
   /** An experience's session; null for a step, or when the session was deleted. */

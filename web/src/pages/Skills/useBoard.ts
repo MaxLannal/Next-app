@@ -14,7 +14,7 @@ export function useBoard(skillId: number) {
 }
 
 type NodeInput = { kind: 'step' | 'experience'; title?: string; description?: string; sessionId?: number; completedOn?: string; layer: number; x: number; y: number };
-type NodeEdit = Partial<Pick<SkillNode, 'title' | 'description' | 'layer' | 'x' | 'y' | 'completedOn'>>;
+type NodeEdit = Partial<Pick<SkillNode, 'title' | 'description' | 'layer' | 'x' | 'y' | 'w' | 'h' | 'completedOn'>>;
 
 /**
  * Every write to a board, each keeping the cached board in step with the hub and refreshing the

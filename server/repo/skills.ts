@@ -14,6 +14,8 @@ type NodeRow = {
   layer: number;
   x: number;
   y: number;
+  w: number | null;
+  h: number | null;
   created_at: string;
   completed_on: string | null;
   session_id: number | null;
@@ -56,7 +58,7 @@ function toSkill(db: DatabaseSync, row: SkillRow): Skill {
 }
 
 const NODE_SELECT = `
-  SELECT n.id, n.skill_id, n.kind, n.title, n.description, n.layer, n.x, n.y, n.created_at, n.completed_on, n.session_id,
+  SELECT n.id, n.skill_id, n.kind, n.title, n.description, n.layer, n.x, n.y, n.w, n.h, n.created_at, n.completed_on, n.session_id,
          s.name AS s_name, sub.name AS s_subject, s.focus_seconds AS s_focus, s.started_at AS s_started
   FROM skill_nodes n
   LEFT JOIN focus_sessions s ON s.id = n.session_id
@@ -95,6 +97,8 @@ function toNode(r: NodeRow, files: SkillFile[]): SkillNode {
     layer: r.layer,
     x: r.x,
     y: r.y,
+    w: r.w,
+    h: r.h,
     createdAt: r.created_at,
     completedOn: r.kind === 'step' ? r.completed_on : null,
     session:
@@ -157,8 +161,12 @@ export function getNode(db: DatabaseSync, id: number): SkillNode | null {
   return row ? toNodes(db, [row])[0] : null;
 }
 
-type NodeFields = { title?: unknown; description?: unknown; layer?: unknown; x?: unknown; y?: unknown; completedOn?: unknown };
-type CleanFields = { title?: string; description?: string; layer?: number; x?: number; y?: number; completedOn?: string | null };
+type NodeFields = { title?: unknown; description?: unknown; layer?: unknown; x?: unknown; y?: unknown; w?: unknown; h?: unknown; completedOn?: unknown };
+type CleanFields = { title?: string; description?: string; layer?: number; x?: number; y?: number; w?: number | null; h?: number | null; completedOn?: string | null };
+
+/** A card sized by hand stays within these, in canvas units; null is the size its text gives it. */
+export const NODE_SIZE_MIN = 120;
+export const NODE_SIZE_MAX = 2000;
 
 const DAY_KEY = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
@@ -185,6 +193,14 @@ function cleanFields(f: NodeFields): CleanFields {
     const v = f[key];
     if (v === undefined) continue;
     if (typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > 1e6) throw new SkillInputError(`${key} must be a number on the canvas`);
+    out[key] = v;
+  }
+  for (const key of ['w', 'h'] as const) {
+    const v = f[key];
+    if (v === undefined) continue;
+    if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < NODE_SIZE_MIN || v > NODE_SIZE_MAX)) {
+      throw new SkillInputError(`A card's ${key === 'w' ? 'width' : 'height'} is between ${NODE_SIZE_MIN} and ${NODE_SIZE_MAX}, or none`);
+    }
     out[key] = v;
   }
   return out;
@@ -231,12 +247,14 @@ export function updateNode(db: DatabaseSync, id: number, input: NodeFields, now:
   if (!node) return null;
   const f = cleanFields(input);
   const next = { ...node, ...f };
-  db.prepare('UPDATE skill_nodes SET title = ?, description = ?, layer = ?, x = ?, y = ?, completed_on = ? WHERE id = ?').run(
+  db.prepare('UPDATE skill_nodes SET title = ?, description = ?, layer = ?, x = ?, y = ?, w = ?, h = ?, completed_on = ? WHERE id = ?').run(
     next.title,
     next.description,
     next.layer,
     next.x,
     next.y,
+    next.w,
+    next.h,
     node.kind === 'step' ? next.completedOn : null,
     id,
   );

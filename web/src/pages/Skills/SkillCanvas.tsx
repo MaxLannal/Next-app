@@ -50,6 +50,26 @@ import { useBoard, useBoardActions } from './useBoard.ts';
 /** A card being dragged: where it is in the world, and the stage layout frozen when it was picked up. */
 type Drag = { id: number; pointerId: number; dx: number; dy: number; moved: boolean; wx: number; wy: number; layout: Layout };
 type Pan = { pointerId: number; x: number; y: number; tx: number; ty: number };
+/** Which of a card's edges a resize is pulling: one side, or two at a corner. */
+type Edges = { n?: boolean; s?: boolean; e?: boolean; w?: boolean };
+/** A card being sized by an edge: the box it had and where the press began, with the stages held still. */
+type Resize = { id: number; pointerId: number; edges: Edges; sx: number; sy: number; start: Box; layer: number; layout: Layout };
+
+/** A card sized by hand stays within these, in canvas units (the hub allows 120 to 2000). */
+const CARD_MIN_W = 160;
+const CARD_MIN_H = 64;
+const CARD_MAX = 1600;
+
+const HANDLES: [string, Edges][] = [
+  ['n', { n: true }],
+  ['s', { s: true }],
+  ['e', { e: true }],
+  ['w', { w: true }],
+  ['ne', { n: true, e: true }],
+  ['nw', { n: true, w: true }],
+  ['se', { s: true, e: true }],
+  ['sw', { s: true, w: true }],
+];
 
 /** Files shown on an experience before the rest fold into "+n". */
 const FILES_SHOWN = 6;
@@ -72,6 +92,7 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
   const [nodes, setNodes] = useState<SkillNode[]>([]);
   const [sizes, setSizes] = useState<ReadonlyMap<number, Size>>(new Map());
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [resize, setResize] = useState<Resize | null>(null);
   const dragging = useRef(false);
   const [hoverStep, setHoverStep] = useState<number | null>(null);
   const [freshLinks, setFreshLinks] = useState<Set<number>>(new Set());
@@ -79,7 +100,7 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
   const [picking, setPicking] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const pan = useRef<Pan | null>(null);
-  dragging.current = drag !== null;
+  dragging.current = drag !== null || resize !== null;
 
   // The canvas keeps its own copy of the nodes, so a drag moves smoothly before it is saved.
   useEffect(() => {
@@ -114,8 +135,8 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
   const links = board.data?.links ?? [];
   const stageNames = board.data?.skill.stageNames ?? {};
   const liveLayout = useMemo(() => stageLayout(nodes, sizes), [nodes, sizes]);
-  // While a card is carried, the stages hold still under it.
-  const layout = drag?.layout ?? liveLayout;
+  // While a card is carried or sized, the stages hold still under it.
+  const layout = drag?.layout ?? resize?.layout ?? liveLayout;
   const stages = layout.tops.length;
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const box = (n: SkillNode): Box => {
@@ -185,7 +206,7 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
 
   // ── Dragging a node ──
   const onNodeDown = (e: ReactPointerEvent<HTMLDivElement>, node: SkillNode) => {
-    if (e.button !== 0 || !view || (e.target as HTMLElement).closest('input, textarea, button, a, label')) return;
+    if (e.button !== 0 || !view || (e.target as HTMLElement).closest('input, textarea, button, a, label, .node__handle')) return;
     e.stopPropagation();
     const at = local(e);
     const p = toWorld(view, at.x, at.y);
@@ -194,10 +215,51 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
     viewport.current?.setPointerCapture(e.pointerId);
   };
 
+  // ── Sizing a node by its edges ──
+  const onResizeDown = (e: ReactPointerEvent<HTMLElement>, node: SkillNode, edges: Edges) => {
+    if (e.button !== 0 || !view) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setResize({ id: node.id, pointerId: e.pointerId, edges, sx: e.clientX, sy: e.clientY, start: boxOf(node, sizes, liveLayout), layer: node.layer, layout: liveLayout });
+    viewport.current?.setPointerCapture(e.pointerId);
+  };
+  /** Back to the size its text gives it: a double-click on an edge. */
+  const unsize = (node: SkillNode) => {
+    setNodes((ns) => ns.map((n) => (n.id === node.id ? { ...n, w: null, h: null } : n)));
+    void actions.editNode(node.id, { w: null, h: null }).catch(fail);
+  };
+
   const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (pan.current && pan.current.pointerId === e.pointerId) {
       const p = pan.current;
       setView((v) => (v ? { ...v, tx: p.tx + e.clientX - p.x, ty: p.ty + e.clientY - p.y } : v));
+      return;
+    }
+    if (resize && resize.pointerId === e.pointerId && view) {
+      const { start, edges } = resize;
+      const dx = (e.clientX - resize.sx) / view.k;
+      const dy = (e.clientY - resize.sy) / view.k;
+      const fit = (v: number, min: number) => Math.round(Math.max(min, Math.min(CARD_MAX, v)));
+      let { x, y, w, h } = start;
+      if (edges.e) w = fit(start.w + dx, CARD_MIN_W);
+      if (edges.w) {
+        w = fit(start.w - dx, CARD_MIN_W);
+        x = start.x + start.w - w;
+      }
+      if (edges.s) h = fit(start.h + dy, CARD_MIN_H);
+      if (edges.n) {
+        h = fit(start.h - dy, CARD_MIN_H);
+        y = start.y + start.h - h;
+      }
+      // The top keeps clear of the stage's name.
+      const top = resize.layout.tops[resize.layer] ?? 0;
+      if (y < top + STAGE_PAD_TOP) {
+        h -= top + STAGE_PAD_TOP - y;
+        y = top + STAGE_PAD_TOP;
+      }
+      const sideways = edges.e || edges.w;
+      const upDown = edges.n || edges.s;
+      setNodes((ns) => ns.map((n) => (n.id === resize.id ? { ...n, x, y: y - top, w: sideways ? w : n.w, h: upDown ? h : n.h } : n)));
       return;
     }
     if (!drag || drag.pointerId !== e.pointerId || !view) return;
@@ -240,6 +302,12 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
   const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (pan.current && pan.current.pointerId === e.pointerId) {
       pan.current = null;
+      return;
+    }
+    if (resize && resize.pointerId === e.pointerId) {
+      setResize(null);
+      const node = byId.get(resize.id);
+      if (node) void actions.editNode(node.id, { x: node.x, y: node.y, w: node.w, h: node.h }).catch(fail);
       return;
     }
     if (!drag || drag.pointerId !== e.pointerId) return;
@@ -343,7 +411,7 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
   return (
     <div
       ref={viewport}
-      className={drag?.moved ? 'canvas is-dragging' : 'canvas'}
+      className={['canvas', drag?.moved ? 'is-dragging' : '', resize ? 'is-sizing' : ''].join(' ')}
       style={view ? ({ '--dot-size': `${24 * view.k}px`, backgroundPosition: `${view.tx}px ${view.ty}px` } as CSSProperties) : undefined}
       onPointerDown={onBackgroundDown}
       onPointerMove={onMove}
@@ -402,7 +470,10 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
                 autoFocus={focusId === n.id}
                 dropping={hoverStep === n.id}
                 dragging={drag?.id === n.id && drag.moved}
+                sizing={resize?.id === n.id}
                 onPointerDown={(e) => onNodeDown(e, n)}
+                onResize={(e, edges) => onResizeDown(e, n, edges)}
+                onUnsize={() => unsize(n)}
                 onSave={(edit) => void actions.editNode(n.id, edit).catch(fail)}
                 onDelete={() => void actions.removeNode(n.id).catch(fail)}
               />
@@ -416,7 +487,10 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
                 nodeRef={track}
                 linked={links.some((l) => l.experienceId === n.id)}
                 dragging={drag?.id === n.id && drag.moved}
+                sizing={resize?.id === n.id}
                 onPointerDown={(e) => onNodeDown(e, n)}
+                onResize={(e, edges) => onResizeDown(e, n, edges)}
+                onUnsize={() => unsize(n)}
                 onDelete={() => void actions.removeNode(n.id).catch(fail)}
               />
             );
@@ -499,9 +573,30 @@ type NodeBase = {
   at: Box;
   nodeRef: (el: HTMLDivElement | null) => void;
   dragging: boolean;
+  sizing: boolean;
   onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  onResize: (e: ReactPointerEvent<HTMLElement>, edges: Edges) => void;
+  onUnsize: () => void;
   onDelete: () => void;
 };
+
+/** A handle on every edge and corner: drag one to size the card; double-click to give it back its own size. */
+const Handles = ({ onResize, onUnsize }: Pick<NodeBase, 'onResize' | 'onUnsize'>) => (
+  <>
+    {HANDLES.map(([edge, edges]) => (
+      <span
+        key={edge}
+        className={`node__handle node__handle--${edge}`}
+        aria-hidden="true"
+        onPointerDown={(e) => onResize(e, edges)}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onUnsize();
+        }}
+      />
+    ))}
+  </>
+);
 
 type StepNodeProps = NodeBase & {
   linked: number;
@@ -522,7 +617,7 @@ const TitleOnly = ({ text, date }: { text: string; date: string | null }) => (
   </span>
 );
 
-function StepNode({ node, label, labelDate, at, nodeRef, linked, autoFocus, dropping, dragging, onPointerDown, onSave, onDelete }: StepNodeProps) {
+function StepNode({ node, label, labelDate, at, nodeRef, linked, autoFocus, dropping, dragging, sizing, onPointerDown, onResize, onUnsize, onSave, onDelete }: StepNodeProps) {
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description);
   useEffect(() => setTitle(node.title), [node.title]);
@@ -533,8 +628,14 @@ function StepNode({ node, label, labelDate, at, nodeRef, linked, autoFocus, drop
   return (
     <div
       ref={nodeRef}
-      className={['node', 'node--step', dropping ? 'is-drop' : '', dragging ? 'is-dragging' : ''].join(' ')}
-      style={{ left: at.x, top: at.y, minWidth: STEP_MIN_W, maxWidth: STEP_MAX_W }}
+      className={['node', 'node--step', dropping ? 'is-drop' : '', dragging ? 'is-dragging' : '', sizing ? 'is-sizing' : '', node.w ? 'is-sized' : ''].join(' ')}
+      // Sized by hand, it keeps that width; otherwise it widens with its text, between two widths.
+      style={{
+        left: at.x,
+        top: at.y,
+        ...(node.w ? { width: node.w } : { minWidth: STEP_MIN_W, maxWidth: STEP_MAX_W }),
+        minHeight: node.h ?? undefined,
+      }}
       onPointerDown={onPointerDown}
       data-node={node.id}
     >
@@ -589,12 +690,13 @@ function StepNode({ node, label, labelDate, at, nodeRef, linked, autoFocus, drop
       <button className="node__x" type="button" aria-label={`Delete step ${node.title || 'untitled'}`} onClick={onDelete}>
         ×
       </button>
+      <Handles onResize={onResize} onUnsize={onUnsize} />
     </div>
   );
 }
 
 /** An experience: the focus session behind a step, and the files from it. Drag it onto a step to link them. */
-function ExperienceNode({ node, label, labelDate, at, nodeRef, linked, dragging, onPointerDown, onDelete }: NodeBase & { linked: boolean }) {
+function ExperienceNode({ node, label, labelDate, at, nodeRef, linked, dragging, sizing, onPointerDown, onResize, onUnsize, onDelete }: NodeBase & { linked: boolean }) {
   const s = node.session;
   const files = s?.files ?? [];
   const shown = files.length > FILES_SHOWN ? files.slice(0, FILES_SHOWN - 1) : files;
@@ -602,8 +704,8 @@ function ExperienceNode({ node, label, labelDate, at, nodeRef, linked, dragging,
   return (
     <div
       ref={nodeRef}
-      className={['node', 'node--exp', linked ? 'is-linked' : '', dragging ? 'is-dragging' : ''].join(' ')}
-      style={{ left: at.x, top: at.y, width: EXPERIENCE_W }}
+      className={['node', 'node--exp', linked ? 'is-linked' : '', dragging ? 'is-dragging' : '', sizing ? 'is-sizing' : ''].join(' ')}
+      style={{ left: at.x, top: at.y, width: node.w ?? EXPERIENCE_W, minHeight: node.h ?? undefined }}
       onPointerDown={onPointerDown}
       data-node={node.id}
     >
@@ -627,6 +729,7 @@ function ExperienceNode({ node, label, labelDate, at, nodeRef, linked, dragging,
       <button className="node__x" type="button" aria-label={`Remove experience ${s?.name ?? ''}`.trim()} onClick={onDelete}>
         ×
       </button>
+      <Handles onResize={onResize} onUnsize={onUnsize} />
     </div>
   );
 }
