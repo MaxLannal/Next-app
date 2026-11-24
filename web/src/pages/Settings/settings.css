@@ -70,16 +70,31 @@
 .import__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); margin-top: var(--space-sm); }
 .import label.btn { cursor: pointer; }
 
-/* Wallpaper: what's behind the dashboard now, beside the way to change it. */
-.wallpaper { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--space-lg); align-items: center; }
-.wallpaper__preview { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: var(--radius-inner); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 10%, transparent), 0 10px 24px -14px oklch(5% 0.02 268 / 0.9); background: var(--color-paper-2); }
-.wallpaper__side { display: grid; gap: var(--space-sm); }
-.wallpaper__acts { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
-.wallpaper__acts .btn { cursor: pointer; }
-.wallpaper__acts .is-busy { opacity: 0.7; cursor: progress; }
+/* The photo bank: the fog photograph, then the photos kept, then a tile to add more. The one on
+   the wall wears a periwinkle ring and says so; × waits in a corner until the tile is pointed at. */
+.bank { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-sm); margin: var(--space-md) 0 0; padding: 0; list-style: none; }
+.bank__item { position: relative; }
+.bank__photo, .bank__add { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; padding: 0; border: 0; border-radius: var(--radius-inner); overflow: hidden; cursor: pointer; }
+.bank__photo { background: var(--color-paper-2); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 10%, transparent); transition: box-shadow var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out); }
+.bank__photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.bank__photo:hover { transform: translateY(-1px); }
+.bank__photo:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.bank__photo.is-current { box-shadow: 0 0 0 2px var(--color-accent), 0 10px 26px -12px color-mix(in oklab, var(--color-accent) 60%, transparent); }
+.bank__photo:disabled { cursor: progress; }
+.bank__caption { position: absolute; left: 8px; bottom: 7px; color: var(--color-light); font: 500 var(--text-xs)/1.3 var(--font-body); text-shadow: 0 1px 6px oklch(5% 0.02 268 / 0.8); }
+.bank__badge { position: absolute; top: 7px; left: 7px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--color-accent); color: var(--color-accent-ink); font: 600 10px/1.6 var(--font-body); letter-spacing: 0.02em; }
+.bank__remove { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border: 0; border-radius: var(--radius-pill); background: oklch(12% 0.014 268 / 0.82); color: var(--color-ink); font: 500 13px/1 var(--font-body); cursor: pointer; opacity: 0; transition: opacity var(--dur-short) var(--ease-out); }
+.bank__item:hover .bank__remove, .bank__remove:focus-visible, .bank__remove.is-asking { opacity: 1; }
+.bank__remove.is-asking { background: var(--color-accent-2); color: oklch(18% 0.02 50); font-size: var(--text-xs); }
+.bank__remove:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+@media (hover: none) { .bank__remove { opacity: 0.9; } }
+.bank__add { display: grid; place-content: center; justify-items: center; gap: 2px; border: 1px dashed color-mix(in oklab, var(--color-light) 22%, transparent); color: var(--color-ink-2); font: 500 var(--text-sm)/1.3 var(--font-body); transition: border-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out); }
+.bank__add:hover, .bank__add:focus-within { border-color: var(--color-accent); color: var(--color-ink); }
+.bank__add.is-busy { cursor: progress; opacity: 0.7; }
+.bank__plus { font: 300 1.75rem/1 var(--font-display); color: var(--color-accent); }
 
 @media (max-width: 40rem) {
-  .wallpaper { grid-template-columns: minmax(0, 1fr); }
+  .bank { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fact { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); }
   .copy-field__row { border-radius: var(--radius-inner); padding: var(--space-sm); padding-left: var(--space-md); }
   .switch-row { align-items: start; }

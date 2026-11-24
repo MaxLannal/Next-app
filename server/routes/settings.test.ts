@@ -148,30 +148,48 @@ it('backup makes a dated copy and reports it', async () => {
   expect(after.body.lastBackupAt).toBe('2026-11-22');
 });
 
-it('sets a wallpaper from a photo, replaces it, and goes back to the fog', async () => {
-  const wallpaper = async () => ((await (await t.req('GET', '/api/settings/wallpaper')).json()) as { url: string | null }).url;
-  expect(await wallpaper()).toBeNull();
+type WallpaperState = { url: string | null; current: string | null; photos: { file: string; url: string; thumb: string }[] };
 
-  const put = async (name: string) => {
-    const form = new FormData();
-    form.append('file', new File(['image bytes'], name));
-    return t.req('PUT', '/api/settings/wallpaper', form);
-  };
-  const first = await put('forest.png');
-  expect(first.status).toBe(200);
-  const url = ((await first.json()) as { url: string }).url;
-  expect(await wallpaper()).toBe(url);
-  // Stored as a JPEG, through the Mac, at most 3840 px on its longest side.
-  expect(t.fakes.mac.calls.convertImage.at(-1)?.[2]).toBe(3840);
-  const image = await t.req('GET', url);
-  expect(image.headers.get('content-type')).toBe('image/jpeg');
+const wallpaper = async () => (await (await t.req('GET', '/api/settings/wallpaper')).json()) as WallpaperState;
 
-  const second = ((await (await put('IMG_0001.HEIC')).json()) as { url: string }).url;
-  expect(second).not.toBe(url);
-  expect(readdirSync(`${t.paths.filesDir}/wallpaper`)).toHaveLength(1);
+async function addPhotos(...names: string[]) {
+  const form = new FormData();
+  for (const name of names) form.append('files', new File(['image bytes'], name));
+  return t.req('POST', '/api/settings/wallpaper/photos', form);
+}
 
-  expect((await put('notes.txt')).status).toBe(400);
-  expect((await t.req('DELETE', '/api/settings/wallpaper')).status).toBe(200);
-  expect(await wallpaper()).toBeNull();
-  expect(readdirSync(`${t.paths.filesDir}/wallpaper`)).toHaveLength(0);
+it('keeps a bank of photos to switch the wallpaper between', async () => {
+  expect(await wallpaper()).toEqual({ url: null, current: null, photos: [] });
+  const added = await addPhotos('forest.png', 'IMG_0001.HEIC');
+  expect(added.status).toBe(200);
+  const { photos } = (await added.json()) as WallpaperState;
+  expect(photos).toHaveLength(2);
+  // Kept as JPEGs no bigger than 3840 px, each with a small one for the bank's grid.
+  expect(t.fakes.mac.calls.convertImage.map((call) => call[2])).toEqual([3840, 480, 3840, 480]);
+  // Storing isn't choosing: the wallpaper is still the fog.
+  expect((await wallpaper()).current).toBeNull();
+
+  const pick = photos[1]!;
+  const chosen = (await (await t.req('PUT', '/api/settings/wallpaper', { file: pick.file })).json()) as WallpaperState;
+  expect(chosen.current).toBe(pick.file);
+  expect(chosen.url).toBe(pick.url);
+  expect((await t.req('GET', pick.url)).headers.get('content-type')).toBe('image/jpeg');
+  expect((await t.req('GET', pick.thumb)).status).toBe(200);
+
+  // Back to the fog keeps the photo in the bank.
+  expect(((await (await t.req('PUT', '/api/settings/wallpaper', { file: null })).json()) as WallpaperState).current).toBeNull();
+  expect((await wallpaper()).photos).toHaveLength(2);
+
+  // Taking away the photo on the wall puts the fog back.
+  await t.req('PUT', '/api/settings/wallpaper', { file: pick.file });
+  const after = (await (await t.req('DELETE', `/api/settings/wallpaper/photos/${pick.file}`)).json()) as WallpaperState;
+  expect(after.current).toBeNull();
+  expect(after.photos.map((p) => p.file)).toEqual([photos[0]!.file]);
+});
+
+it('refuses a file that is not a photo, a photo not in the bank, and a way out of its folder', async () => {
+  expect((await addPhotos('notes.txt')).status).toBe(400);
+  expect((await t.req('PUT', '/api/settings/wallpaper', { file: '0123456789abcdef.jpg' })).status).toBe(400);
+  expect((await t.req('GET', '/api/settings/wallpaper/image/..%2Fconfig.json')).status).toBe(404);
+  expect((await t.req('DELETE', '/api/settings/wallpaper/photos/..%2Fconfig.json')).status).toBe(404);
 });
