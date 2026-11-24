@@ -35,6 +35,11 @@ const todayKey = () => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 };
 
+/** The panel asks the hub again this often, so an upload from the iPhone shows without a reload. */
+const REFRESH_MS = 60_000;
+/** An upload is expected every morning; past this, the panel says none has come. */
+const STALE_MS = 36 * 3600 * 1000;
+
 const messageOf = (err: unknown) => (err instanceof ApiError && err.status !== 0 ? err.message : 'The hub didn’t answer.');
 
 /**
@@ -45,6 +50,10 @@ export function SleepPanel() {
   const query = useQuery({
     queryKey: QUERY_KEY,
     queryFn: ({ signal }) => api<SleepReply>(`/api/sleep?nights=${ASKED_NIGHTS}`, { signal }),
+    // The app window can sit open all day; it checks for the morning's upload by itself.
+    refetchInterval: REFRESH_MS,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
   });
   const [picked, setPicked] = useState<string | null>(null);
   const [today, setToday] = useState(todayKey);
@@ -64,6 +73,7 @@ export function SleepPanel() {
   return (
     <Panel title="Sleep" className="sleep" actions={lastSynced(query.data?.lastSyncAt ?? null)}>
       <RefusedUpload status={query.data?.lastIngest ?? null} />
+      <StaleUpload status={query.data?.lastIngest ?? null} lastSyncAt={query.data?.lastSyncAt ?? null} />
       {query.isError && nights.length === 0 ? (
         <EmptyState
           title="Couldn’t load your sleep"
@@ -112,6 +122,23 @@ function RefusedUpload({ status }: { status: SleepIngestStatus | null }) {
   return (
     <p className="sleep__refused" role="status" aria-label="Last iPhone upload">
       Last iPhone upload {formatShortDate(status.at)} {formatTime(status.at)} was refused: {status.error ?? 'no reason given'}
+    </p>
+  );
+}
+
+/**
+ * No upload for a day and a half: say since when, and the usual reason. The Shortcut reaches the
+ * Mac only on the same Wi-Fi (over 5G it can't connect, and the hub never hears of it), unless
+ * Tailscale is set up on both.
+ */
+function StaleUpload({ status, lastSyncAt }: { status: SleepIngestStatus | null; lastSyncAt: string | null }) {
+  const since = status?.at ?? lastSyncAt;
+  if (since === null || (status !== null && !status.ok)) return null;
+  if (Date.now() - new Date(since).getTime() < STALE_MS) return null;
+  return (
+    <p className="sleep__stale" role="status">
+      No upload from your iPhone since {formatShortDate(since)}. The Shortcut reaches this Mac only on the same Wi-Fi, not
+      over mobile data: run it there, or set up Tailscale (<a href="/settings#phone">Settings</a>) to send from anywhere.
     </p>
   );
 }

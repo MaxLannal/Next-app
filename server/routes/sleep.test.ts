@@ -349,3 +349,12 @@ describe('the payload the iPhone Shortcut actually sends', () => {
     expect(night.source).toBe('Apple Health');
   });
 });
+
+it('shows an upload refused for its hub token in the app, since the Shortcut never shows the reply', async () => {
+  const remote = { remote: '100.101.102.103', headers: { host: '100.101.102.103:4747' } };
+  const res = await t.req('POST', '/api/ingest/sleep', '2026-11-23 23:00;2026-11-24 07:00;Core;Watch', { ...remote, headers: { ...remote.headers, authorization: 'Bearer nope', 'content-type': 'text/plain' } });
+  expect(res.status).toBe(401);
+  const reply = (await (await t.req('GET', '/api/sleep')).json()) as { lastIngest: { ok: boolean; error: string } | null };
+  expect(reply.lastIngest?.ok).toBe(false);
+  expect(reply.lastIngest?.error).toContain('hub token is wrong');
+});

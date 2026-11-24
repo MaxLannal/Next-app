@@ -134,4 +134,20 @@ describe('SleepPanel and the last iPhone upload', () => {
     await screen.findByText('7 h 30 m');
     expect(screen.queryByRole('status', { name: /last iphone upload/i })).toBeNull();
   });
+
+  it('says when no upload has come for a day and a half, and why, and not when one just came', async () => {
+    const old = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+    stubSleep({ nights: [night({})], lastNight: night({}), lastSyncAt: old, lastIngest: { ok: true, at: old, inserted: 12, error: null } });
+    const { unmount } = renderPanel();
+    expect(await screen.findByText(/No upload from your iPhone since/)).toBeTruthy();
+    expect(screen.getByText(/same Wi-Fi/)).toBeTruthy();
+    unmount();
+
+    const fresh = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    stubSleep({ nights: [night({})], lastNight: night({}), lastSyncAt: fresh, lastIngest: { ok: true, at: fresh, inserted: 12, error: null } });
+    renderPanel();
+    await screen.findAllByText(/7 h|h/);
+    expect(screen.queryByText(/No upload from your iPhone since/)).toBeNull();
+  });
 });
+

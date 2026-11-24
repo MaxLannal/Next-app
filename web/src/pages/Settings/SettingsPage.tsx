@@ -39,9 +39,14 @@ export function SettingsPage() {
         />
       ) : (
         <div className="settings__sections">
-          <PhoneAccess settings={query.data} onSave={save} />
+          {/* Anchors the dashboard links to: #phone for Tailscale, #sleep for the Shortcut. */}
+          <div id="phone" className="settings__anchor">
+            <PhoneAccess settings={query.data} onSave={save} />
+          </div>
           <Wallpaper />
-          <SleepSetup settings={query.data} />
+          <div id="sleep" className="settings__anchor">
+            <SleepSetup settings={query.data} />
+          </div>
           <GitHubSetup github={query.data.github} />
           <Permissions settings={query.data} />
           <DataBackups

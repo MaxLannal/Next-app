@@ -46,6 +46,12 @@ function rememberIngest(ctx: AppContext, status: SleepIngestStatus): void {
     .run(LAST_INGEST_KEY, JSON.stringify(status));
 }
 
+/** An upload refused before it reached the route (the wrong hub token): the app says so too. */
+export function noteRefusedUpload(ctx: AppContext, error: string): void {
+  console.error(`Sleep upload refused: ${error}`);
+  rememberIngest(ctx, { ok: false, at: ctx.now().toISOString(), inserted: null, error });
+}
+
 /** The latest iPhone upload's outcome, or null before the first one. */
 export function lastIngest(db: AppContext['db']): SleepIngestStatus | null {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(LAST_INGEST_KEY) as { value: string } | undefined;

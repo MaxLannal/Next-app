@@ -3,6 +3,7 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
 import type { AppContext } from './context.ts';
+import { noteRefusedUpload } from './routes/sleep.ts';
 
 const SESSION_COOKIE = 'hub_session';
 const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
@@ -94,6 +95,10 @@ export function authMiddleware(ctx: AppContext): MiddlewareHandler {
     if (isIngestPath(path)) {
       const bearer = /^Bearer (.+)$/.exec(c.req.header('authorization') ?? '')?.[1];
       if (matchesSecret(bearer, cfg.hubToken)) return next();
+      // The Shortcut never shows the reply: a sleep upload refused here shows in the app instead.
+      if (path === '/api/ingest/sleep' && c.req.method === 'POST') {
+        noteRefusedUpload(ctx, bearer === undefined ? 'no hub token sent (add the Authorization header from Settings)' : 'the hub token is wrong (copy it again from Settings)');
+      }
       return c.json({ error: 'Hub token required' }, 401);
     }
     return c.json({ error: 'login required' }, 401);

@@ -73,6 +73,13 @@
 }
 
 /* A refused iPhone upload: apricot means owed, and the reason sits right there. */
+.sleep__stale {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.sleep__stale a { color: var(--color-ink-2); text-decoration: underline; text-underline-offset: 2px; }
 .sleep__refused {
   margin: 0 0 var(--space-md);
   padding: var(--space-sm) 12px;
