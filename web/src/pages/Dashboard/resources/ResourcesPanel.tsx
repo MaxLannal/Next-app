@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { SiteIcon } from '../../../components/SiteIcon.tsx';
 import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
 import type { Resource, ResourceKind } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
@@ -206,7 +207,7 @@ function ResourceRow({ resource: r, index, onUpdate, onRemove }: RowProps) {
 
   return (
     <li className={r.done ? 'res rise is-done' : 'res rise'} style={style}>
-      <KindMark kind={r.kind} />
+      <KindMark kind={r.kind} resourceId={r.id} />
       <span className="res__main">
         <a className="res__title" id={titleId} href={r.url} target="_blank" rel="noopener">
           {r.title}
@@ -357,10 +358,12 @@ const KIND_ICONS: Record<ResourceKind, string> = {
   link: 'M6.75 9.25a2.5 2.5 0 0 0 3.54 0l2.12-2.12a2.5 2.5 0 0 0-3.54-3.54l-.7.7M9.25 6.75a2.5 2.5 0 0 0-3.54 0L3.59 8.87a2.5 2.5 0 0 0 3.54 3.54l.7-.7',
 };
 
-function KindMark({ kind }: { kind: ResourceKind }) {
+/** The site's own icon (YouTube's red one for a YouTube video), or the kind's mark when it has none. */
+function KindMark({ kind, resourceId }: { kind: ResourceKind; resourceId?: number }) {
+  const mark = <Icon d={KIND_ICONS[kind]} />;
   return (
     <span className="res__mark" role="img" aria-label={KIND_LABEL[kind]} title={KIND_LABEL[kind]}>
-      <Icon d={KIND_ICONS[kind]} />
+      {resourceId === undefined ? mark : <SiteIcon resourceId={resourceId} fallback={mark} className="res__site" />}
     </span>
   );
 }

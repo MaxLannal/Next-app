@@ -323,6 +323,9 @@ export type Skill = {
 export type SkillFile = { id: number; filename: string; kind: AttachmentKind; mime: string; url: string };
 
 /** The focus session an experience stands for, as the canvas shows it, with the files from it. */
+/** A resource from the Resources panel attached to an experience; its site's icon is at `/api/resources/:id/icon`. */
+export type SkillResource = { id: number; title: string; url: string; domain: string; kind: ResourceKind };
+
 export type SkillSessionRef = { id: number; name: string; subject: string | null; focusSeconds: number; startedAt: string; files: SkillFile[] };
 
 export type SkillNode = {
@@ -344,6 +347,8 @@ export type SkillNode = {
   completedOn: string | null;
   /** An experience's session; null for a step, or when the session was deleted. */
   session: SkillSessionRef | null;
+  /** Resources attached to an experience, in the order they were attached; none on a step. */
+  resources: SkillResource[];
   createdAt: string;
 };
 

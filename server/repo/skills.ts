@@ -2,7 +2,7 @@
 // step and the experiences that back it.
 
 import type { DatabaseSync } from 'node:sqlite';
-import type { Skill, SkillBoard, SkillFile, SkillLink, SkillNode, SkillNodeKind } from '../../shared/types.ts';
+import type { Skill, SkillBoard, SkillFile, SkillLink, SkillNode, SkillNodeKind, SkillResource } from '../../shared/types.ts';
 
 type SkillRow = { id: number; name: string; created_at: string; updated_at: string };
 type NodeRow = {
@@ -82,12 +82,32 @@ function filesBySession(db: DatabaseSync, sessionIds: number[]): Map<number, Ski
   return out;
 }
 
-function toNodes(db: DatabaseSync, rows: NodeRow[]): SkillNode[] {
-  const files = filesBySession(db, [...new Set(rows.flatMap((r) => (r.session_id !== null ? [r.session_id] : [])))]);
-  return rows.map((r) => toNode(r, files.get(r.session_id ?? -1) ?? []));
+/** The resources attached to each node, in the order they were attached. */
+function resourcesByNode(db: DatabaseSync, nodeIds: number[]): Map<number, SkillResource[]> {
+  const out = new Map<number, SkillResource[]>();
+  if (nodeIds.length === 0) return out;
+  const rows = db
+    .prepare(
+      `SELECT nr.node_id, r.id, r.title, r.url, r.domain, r.kind FROM skill_node_resources nr
+       JOIN resources r ON r.id = nr.resource_id
+       WHERE nr.node_id IN (${nodeIds.map(() => '?').join(',')}) ORDER BY nr.created_at, r.id`,
+    )
+    .all(...nodeIds) as ({ node_id: number } & SkillResource)[];
+  for (const { node_id, ...r } of rows) {
+    const list = out.get(node_id) ?? [];
+    list.push(r);
+    out.set(node_id, list);
+  }
+  return out;
 }
 
-function toNode(r: NodeRow, files: SkillFile[]): SkillNode {
+function toNodes(db: DatabaseSync, rows: NodeRow[]): SkillNode[] {
+  const files = filesBySession(db, [...new Set(rows.flatMap((r) => (r.session_id !== null ? [r.session_id] : [])))]);
+  const resources = resourcesByNode(db, rows.map((r) => r.id));
+  return rows.map((r) => toNode(r, files.get(r.session_id ?? -1) ?? [], resources.get(r.id) ?? []));
+}
+
+function toNode(r: NodeRow, files: SkillFile[], resources: SkillResource[]): SkillNode {
   return {
     id: r.id,
     skillId: r.skill_id,
@@ -105,6 +125,7 @@ function toNode(r: NodeRow, files: SkillFile[]): SkillNode {
       r.session_id !== null && r.s_name !== null
         ? { id: r.session_id, name: r.s_name, subject: r.s_subject, focusSeconds: r.s_focus ?? 0, startedAt: r.s_started ?? '', files }
         : null,
+    resources,
   };
 }
 
@@ -260,6 +281,24 @@ export function updateNode(db: DatabaseSync, id: number, input: NodeFields, now:
   );
   touch(db, node.skillId, now);
   return getNode(db, id);
+}
+
+/** Attaches a resource to an experience (once; attaching it again changes nothing). */
+export function attachResource(db: DatabaseSync, nodeId: number, resourceId: unknown, now: Date): SkillNode | null {
+  const node = getNode(db, nodeId);
+  if (!node) return null;
+  if (node.kind !== 'experience') throw new SkillInputError('Resources attach to an experience');
+  if (typeof resourceId !== 'number' || !Number.isInteger(resourceId) || !db.prepare('SELECT 1 FROM resources WHERE id = ?').get(resourceId)) {
+    throw new SkillInputError('No such resource');
+  }
+  db.prepare('INSERT OR IGNORE INTO skill_node_resources (node_id, resource_id, created_at) VALUES (?, ?, ?)').run(nodeId, resourceId, now.toISOString());
+  touch(db, node.skillId, now);
+  return getNode(db, nodeId);
+}
+
+/** Takes a resource off an experience; false when it wasn't on it. */
+export function detachResource(db: DatabaseSync, nodeId: number, resourceId: number): boolean {
+  return Number(db.prepare('DELETE FROM skill_node_resources WHERE node_id = ? AND resource_id = ?').run(nodeId, resourceId).changes) > 0;
 }
 
 export function deleteNode(db: DatabaseSync, id: number, now: Date): boolean {

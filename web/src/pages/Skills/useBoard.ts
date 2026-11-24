@@ -66,6 +66,20 @@ export function useBoardActions(skillId: number) {
       await api<Skill>(`/api/skills/${skillId}/stages/${layer}`, { method: 'PUT', json: { name } });
       void queryClient.invalidateQueries({ queryKey: SKILLS_KEY });
     },
+    /** Attaches resources from the Resources panel to an experience, one after another. */
+    async attachResources(nodeId: number, resourceIds: number[]): Promise<void> {
+      for (const resourceId of resourceIds) {
+        const node = await api<SkillNode>(`/api/skills/nodes/${nodeId}/resources`, { method: 'POST', json: { resourceId } });
+        patchBoard((b) => ({ ...b, nodes: b.nodes.map((n) => (n.id === nodeId ? node : n)) }));
+      }
+    },
+    async detachResource(nodeId: number, resourceId: number): Promise<void> {
+      patchBoard((b) => ({
+        ...b,
+        nodes: b.nodes.map((n) => (n.id === nodeId ? { ...n, resources: n.resources.filter((r) => r.id !== resourceId) } : n)),
+      }));
+      await api(`/api/skills/nodes/${nodeId}/resources/${resourceId}`, { method: 'DELETE' });
+    },
     async unlink(id: number): Promise<void> {
       patchBoard((b) => ({ ...b, links: b.links.filter((l) => l.id !== id) }));
       await api(`/api/skills/links/${id}`, { method: 'DELETE' });

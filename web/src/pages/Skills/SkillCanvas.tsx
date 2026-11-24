@@ -8,7 +8,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import type { FocusSession, SkillNode } from '@shared/types.ts';
+import type { FocusSession, SkillNode, SkillResource } from '@shared/types.ts';
 import { ApiError } from '../../api.ts';
 import { formatDayKey, formatDuration, formatShortDate, localDay } from '../../lib/format.ts';
 import { AddMenu } from './AddMenu.tsx';
@@ -44,6 +44,8 @@ import {
   type Size,
   type View,
 } from './geometry.ts';
+import { SiteIcon } from '../../components/SiteIcon.tsx';
+import { ResourcePicker } from './ResourcePicker.tsx';
 import { SessionPicker } from './SessionPicker.tsx';
 import { useBoard, useBoardActions } from './useBoard.ts';
 
@@ -98,6 +100,8 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
   const [freshLinks, setFreshLinks] = useState<Set<number>>(new Set());
   const [focusId, setFocusId] = useState<number | null>(null);
   const [picking, setPicking] = useState(false);
+  /** The experience resources are being attached to, while the picker is open. */
+  const [attachTo, setAttachTo] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const pan = useRef<Pan | null>(null);
   dragging.current = drag !== null || resize !== null;
@@ -491,6 +495,14 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
                 onPointerDown={(e) => onNodeDown(e, n)}
                 onResize={(e, edges) => onResizeDown(e, n, edges)}
                 onUnsize={() => unsize(n)}
+                onAttach={() => {
+                  setPicking(false);
+                  setAttachTo(n.id);
+                }}
+                onDetach={(resourceId) => {
+                  setNodes((ns) => ns.map((x) => (x.id === n.id ? { ...x, resources: x.resources.filter((r) => r.id !== resourceId) } : x)));
+                  void actions.detachResource(n.id, resourceId).catch(fail);
+                }}
                 onDelete={() => void actions.removeNode(n.id).catch(fail)}
               />
             );
@@ -532,6 +544,20 @@ export function SkillCanvas({ skillId }: { skillId: number }) {
 
       <AddMenu onStep={() => void addStep()} onExperience={() => setPicking(true)} />
       {picking && <SessionPicker onCanvas={sessionsOnCanvas} onAdd={(s) => void addExperiences(s)} onClose={() => setPicking(false)} />}
+      {attachTo !== null && byId.get(attachTo) && (
+        <ResourcePicker
+          name={titleOf(byId.get(attachTo)!)}
+          attached={new Set(byId.get(attachTo)!.resources.map((r) => r.id))}
+          onClose={() => setAttachTo(null)}
+          onAttach={(chosen) => {
+            const id = attachTo;
+            setAttachTo(null);
+            const added: SkillResource[] = chosen.map((r) => ({ id: r.id, title: r.title, url: r.url, domain: r.domain, kind: r.kind }));
+            setNodes((ns) => ns.map((x) => (x.id === id ? { ...x, resources: [...x.resources, ...added.filter((a) => !x.resources.some((r) => r.id === a.id))] } : x)));
+            void actions.attachResources(id, chosen.map((r) => r.id)).catch(fail);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -696,11 +722,31 @@ function StepNode({ node, label, labelDate, at, nodeRef, linked, autoFocus, drop
 }
 
 /** An experience: the focus session behind a step, and the files from it. Drag it onto a step to link them. */
-function ExperienceNode({ node, label, labelDate, at, nodeRef, linked, dragging, sizing, onPointerDown, onResize, onUnsize, onDelete }: NodeBase & { linked: boolean }) {
+type ExperienceProps = NodeBase & { linked: boolean; onAttach: () => void; onDetach: (resourceId: number) => void };
+
+/** A resource on an experience: its site's icon (YouTube's red one for a video) and title; opens it. */
+function ResourceTile({ resource, onDetach }: { resource: SkillResource; onDetach: () => void }) {
+  return (
+    <span className="file file--res">
+      <a className="file__link" href={resource.url} target="_blank" rel="noreferrer" title={`${resource.title} — ${resource.domain}`}>
+        <span className="file__site" aria-hidden="true">
+          <SiteIcon resourceId={resource.id} fallback={<span className="file__site-glyph">{resource.domain.slice(0, 1).toUpperCase()}</span>} />
+        </span>
+        <span className="file__name">{resource.title}</span>
+      </a>
+      <button className="file__x" type="button" aria-label={`Take ${resource.title} off this experience`} onClick={onDetach}>
+        ×
+      </button>
+    </span>
+  );
+}
+
+function ExperienceNode({ node, label, labelDate, at, nodeRef, linked, dragging, sizing, onPointerDown, onResize, onUnsize, onAttach, onDetach, onDelete }: ExperienceProps) {
   const s = node.session;
   const files = s?.files ?? [];
   const shown = files.length > FILES_SHOWN ? files.slice(0, FILES_SHOWN - 1) : files;
   const more = files.length - shown.length;
+  const resources = node.resources;
   return (
     <div
       ref={nodeRef}
@@ -717,14 +763,20 @@ function ExperienceNode({ node, label, labelDate, at, nodeRef, linked, dragging,
           {formatShortDate(s.startedAt)} · {formatDuration(s.focusSeconds)}
         </span>
       )}
-      {files.length > 0 && (
-        <span className="node__files" aria-label={`${files.length} ${files.length === 1 ? 'file' : 'files'} from this session`}>
+      {(files.length > 0 || resources.length > 0) && (
+        <span className="node__files" aria-label={`${files.length} ${files.length === 1 ? 'file' : 'files'} and ${resources.length} ${resources.length === 1 ? 'resource' : 'resources'}`}>
           {shown.map((f) => (
             <FileIcon key={f.id} file={f} />
           ))}
           {more > 0 && <span className="file file--more num">+{more}</span>}
+          {resources.map((r) => (
+            <ResourceTile key={r.id} resource={r} onDetach={() => onDetach(r.id)} />
+          ))}
         </span>
       )}
+      <button className="node__attach" type="button" onClick={onAttach}>
+        <span aria-hidden="true">+</span> Resource
+      </button>
       <TitleOnly text={label} date={labelDate} />
       <button className="node__x" type="button" aria-label={`Remove experience ${s?.name ?? ''}`.trim()} onClick={onDelete}>
         ×

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { detectKind, fetchMeta, isPrivateHost, type FetchLike } from './resources.ts';
+import { detectKind, fetchMeta, fetchSiteIcon, iconLinks, isPrivateHost, type FetchLike } from './resources.ts';
 
 const USER_AGENT = 'Mozilla/5.0 (Macintosh) PersonalHub/1.0';
 
@@ -273,5 +273,55 @@ describe('isPrivateHost', () => {
     ['localhost.example.com', false],
   ])('%s → %s', (host, expected) => {
     expect(isPrivateHost(host)).toBe(expected);
+  });
+});
+
+describe('site icons', () => {
+  const png = (bytes = 'PNGDATA') => new Response(bytes, { headers: { 'content-type': 'image/png' } });
+
+  it('picks the best icon a page names: a touch icon, then the largest, never an SVG', () => {
+    const page = `<head>
+      <link rel="icon" href="/small.png" sizes="16x16">
+      <link rel="icon" type="image/svg+xml" href="/logo.svg">
+      <link rel="shortcut icon" href="https://cdn.example.com/fav.ico">
+      <link rel="icon" href="/big.png" sizes="96x96">
+      <link rel="apple-touch-icon" href="/touch.png">
+      <link rel="stylesheet" href="/a.css"></head>`;
+    expect(iconLinks(page, new URL('https://example.com/')).map((u) => u.href)).toEqual([
+      'https://example.com/touch.png',
+      'https://example.com/big.png',
+      'https://example.com/small.png',
+      'https://cdn.example.com/fav.ico',
+    ]);
+  });
+
+  it("fetches YouTube's own icon for a youtu.be link", async () => {
+    const fetchImpl = fakeFetch({
+      'https://www.youtube.com/': () => html('<link rel="icon" href="https://www.youtube.com/s/desktop/favicon_144x144.png" sizes="144x144">'),
+      'https://www.youtube.com/s/desktop/favicon_144x144.png': () => png('RED'),
+    });
+    const icon = await fetchSiteIcon('https://youtu.be/abc', fetchImpl);
+    expect(icon?.type).toBe('image/png');
+    expect(new TextDecoder().decode(icon!.bytes)).toBe('RED');
+  });
+
+  it('falls back to /favicon.ico, and finds none where there is nothing to have', async () => {
+    const withIco = fakeFetch({
+      'https://plain.org/': () => html('<title>Plain</title>'),
+      'https://plain.org/favicon.ico': () => new Response('ICO', { headers: { 'content-type': 'image/vnd.microsoft.icon' } }),
+    });
+    expect((await fetchSiteIcon('https://plain.org/a/page', withIco))?.type).toBe('image/vnd.microsoft.icon');
+    const svgOnly = fakeFetch({
+      'https://svg.org/': () => html('<title>S</title>'),
+      'https://svg.org/favicon.ico': () => new Response('<svg/>', { headers: { 'content-type': 'image/svg+xml' } }),
+    });
+    expect(await fetchSiteIcon('https://svg.org/', svgOnly)).toBeNull();
+  });
+
+  it('never asks a private address', async () => {
+    const fetchImpl = vi.fn<FetchLike>();
+    expect(await fetchSiteIcon('http://127.0.0.1:4747/', fetchImpl)).toBeNull();
+    expect(await fetchSiteIcon('http://192.168.1.4/x', fetchImpl)).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

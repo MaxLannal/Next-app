@@ -166,3 +166,35 @@ describe('sizing a card by its edges', () => {
     expect((await t.req('PATCH', `/api/skills/nodes/${step.id}`, { h: 'tall' })).status).toBe(400);
   });
 });
+
+describe('resources on an experience', () => {
+  it('attaches resources to an experience once each, shows them on the board, and lets them go', async () => {
+    const s = await skill();
+    const exp = await json<SkillNode>(await post(`/api/skills/${s.id}/nodes`, { kind: 'experience', sessionId: session(), layer: 0, x: 0, y: 80 }));
+    const step = await json<SkillNode>(await post(`/api/skills/${s.id}/nodes`, { kind: 'step', title: 'Rolle', layer: 0, x: 300, y: 80 }));
+    expect(exp.resources).toEqual([]);
+    const video = Number(
+      t.db
+        .prepare("INSERT INTO resources (url, title, kind, domain, created_at) VALUES ('https://www.youtube.com/watch?v=x', 'Rolle explained', 'video', 'youtube.com', ?)")
+        .run('2026-11-24T10:00:00.000Z').lastInsertRowid,
+    );
+
+    const attached = await json<SkillNode>(await post(`/api/skills/nodes/${exp.id}/resources`, { resourceId: video }));
+    expect(attached.resources).toEqual([{ id: video, title: 'Rolle explained', url: 'https://www.youtube.com/watch?v=x', domain: 'youtube.com', kind: 'video' }]);
+    await post(`/api/skills/nodes/${exp.id}/resources`, { resourceId: video });
+    const board = await json<SkillBoard>(await t.req('GET', `/api/skills/${s.id}`));
+    expect(board.nodes.find((n) => n.id === exp.id)!.resources).toHaveLength(1);
+
+    expect((await post(`/api/skills/nodes/${step.id}/resources`, { resourceId: video })).status).toBe(400);
+    expect((await post(`/api/skills/nodes/${exp.id}/resources`, { resourceId: 999 })).status).toBe(400);
+
+    expect((await t.req('DELETE', `/api/skills/nodes/${exp.id}/resources/${video}`)).status).toBe(204);
+    expect((await t.req('DELETE', `/api/skills/nodes/${exp.id}/resources/${video}`)).status).toBe(404);
+
+    // A resource deleted from the panel leaves the experience too.
+    await post(`/api/skills/nodes/${exp.id}/resources`, { resourceId: video });
+    await t.req('DELETE', `/api/resources/${video}`);
+    const after = await json<SkillBoard>(await t.req('GET', `/api/skills/${s.id}`));
+    expect(after.nodes.find((n) => n.id === exp.id)!.resources).toEqual([]);
+  });
+});

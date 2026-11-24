@@ -4,10 +4,12 @@
 import { Hono, type Context } from 'hono';
 import type { AppContext } from '../context.ts';
 import {
+  attachResource,
   createNode,
   createSkill,
   deleteNode,
   deleteSkill,
+  detachResource,
   getBoard,
   linkNodes,
   listSkills,
@@ -54,6 +56,20 @@ export function skillRoutes(ctx: AppContext): Hono {
       throw err;
     }
   });
+  // Resources from the Resources panel, attached to an experience.
+  routes.post('/nodes/:id{[0-9]+}/resources', async (c) => {
+    const body = await jsonBody(c);
+    try {
+      const node = attachResource(ctx.db, id(c), body.resourceId, ctx.now());
+      return node ? c.json(node, 201) : c.json({ error: 'No such node' }, 404);
+    } catch (err) {
+      if (err instanceof SkillInputError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  });
+  routes.delete('/nodes/:id{[0-9]+}/resources/:resource{[0-9]+}', (c) =>
+    detachResource(ctx.db, id(c), Number(c.req.param('resource'))) ? c.body(null, 204) : c.json({ error: 'Not attached' }, 404),
+  );
   routes.delete('/nodes/:id{[0-9]+}', (c) => (deleteNode(ctx.db, id(c), ctx.now()) ? c.body(null, 204) : c.json({ error: 'No such node' }, 404)));
   routes.post('/links', async (c) => {
     const body = await jsonBody(c);

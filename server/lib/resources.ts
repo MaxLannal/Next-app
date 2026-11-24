@@ -353,3 +353,83 @@ function pdfFilename(url: URL): string | null {
   }
   return squash(name.replace(/\.pdf$/i, ''));
 }
+
+// ── Site icons ─────────────────────────────────────────────────────────────
+
+/** The image types a site icon is kept as. Never SVG: an SVG is a page that can run script. */
+export const ICON_TYPES: Record<string, string> = {
+  'image/png': 'png',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+};
+const ICON_LIMIT = 300 * 1024;
+const LINK_TAG = /<link\b[^>]*>/gi;
+/** Hosts whose icon lives on another host. */
+const ICON_HOST: Record<string, string> = { 'youtu.be': 'www.youtube.com', 'm.youtube.com': 'www.youtube.com', 'music.youtube.com': 'www.youtube.com' };
+
+/** The icons a page names, best first: an Apple touch icon (large), then the largest of the rest. */
+export function iconLinks(page: string, base: URL): URL[] {
+  const found: { url: URL; score: number }[] = [];
+  for (const tag of page.match(LINK_TAG) ?? []) {
+    const attrs = new Map<string, string>();
+    for (const [, name, a, b, c] of tag.matchAll(ATTRIBUTE)) attrs.set(name!.toLowerCase(), a ?? b ?? c ?? '');
+    const rel = (attrs.get('rel') ?? '').toLowerCase().split(/\s+/);
+    const href = attrs.get('href');
+    if (!href || !(rel.includes('icon') || rel.includes('apple-touch-icon'))) continue;
+    if ((attrs.get('type') ?? '').includes('svg') || /\.svg(\?|#|$)/i.test(href)) continue;
+    const url = parseHttpUrl(new URL(decodeEntities(href), base).href);
+    if (!url) continue;
+    const size = Math.max(0, ...(attrs.get('sizes') ?? '').split(/\s+/).map((s) => Number(s.split(/x/i)[0]) || 0));
+    found.push({ url, score: (rel.includes('apple-touch-icon') ? 1000 : 0) + (size || 16) });
+  }
+  return found.sort((a, b) => b.score - a.score).map((f) => f.url);
+}
+
+/**
+ * A site's own icon (YouTube's red one, for a YouTube video): the best icon its home page names,
+ * else its /favicon.ico. PNG, ICO, JPEG, GIF or WebP, under 300 KB; null when there is none, the
+ * site is private, or it takes too long.
+ */
+export async function fetchSiteIcon(pageUrl: string, fetchImpl: FetchLike = fetch, timeoutMs = 8000): Promise<{ bytes: Uint8Array; type: string } | null> {
+  const page = parseHttpUrl(pageUrl);
+  if (!page) return null;
+  const host = ICON_HOST[page.hostname] ?? page.hostname;
+  if (isPrivateHost(host)) return null;
+  const home = new URL(`${page.protocol}//${host}/`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let named: URL[] = [];
+    try {
+      const res = await get(home.href, fetchImpl, controller.signal);
+      if (res.ok && (res.headers.get('content-type') ?? '').includes('html')) {
+        named = iconLinks(decode(await readCapped(res, HTML_LIMIT), res.headers.get('content-type') ?? ''), new URL(res.url || home.href));
+      } else await res.body?.cancel();
+    } catch {
+      // No home page to read: the favicon may still be there.
+    }
+    const tries = [...named.slice(0, 3), new URL('/favicon.ico', home)];
+    for (const url of tries) {
+      if (isPrivateHost(url.hostname)) continue;
+      try {
+        const res = await get(url.href, fetchImpl, controller.signal);
+        const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+        const kept = ICON_TYPES[type] ? type : type === '' || type === 'application/octet-stream' ? (url.pathname.endsWith('.ico') ? 'image/x-icon' : null) : null;
+        if (!res.ok || kept === null) {
+          await res.body?.cancel();
+          continue;
+        }
+        const bytes = await readCapped(res, ICON_LIMIT + 1);
+        if (bytes.byteLength > 0 && bytes.byteLength <= ICON_LIMIT) return { bytes, type: kept };
+      } catch {
+        // The next candidate.
+      }
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}

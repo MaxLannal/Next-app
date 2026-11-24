@@ -143,3 +143,20 @@ it('deletes a resource', async () => {
   const again = await t.req('DELETE', `/api/resources/${drop.id}`);
   expect(again.status).toBe(404);
 });
+
+it("serves a site's icon kept once per host, sandboxed, and says when a site has none", async () => {
+  const added = (await (await t.req('POST', '/api/resources', { url: 'http://127.0.0.1:9/notes' })).json()) as Resource;
+  // A private address is never fetched: no icon.
+  expect((await t.req('GET', `/api/resources/${added.id}/icon`)).status).toBe(404);
+
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  mkdirSync(join(t.paths.filesDir, 'site-icons'), { recursive: true });
+  writeFileSync(join(t.paths.filesDir, 'site-icons', '127.0.0.1.png'), 'PNG');
+  const res = await t.req('GET', `/api/resources/${added.id}/icon`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get('content-type')).toBe('image/png');
+  expect(res.headers.get('content-security-policy')).toContain('sandbox');
+  expect(await res.text()).toBe('PNG');
+  expect((await t.req('GET', '/api/resources/99999/icon')).status).toBe(404);
+});
