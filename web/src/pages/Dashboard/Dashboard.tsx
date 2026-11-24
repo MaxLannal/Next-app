@@ -1,4 +1,4 @@
-import { useLayoutEffect, type ReactNode } from 'react';
+import { useLayoutEffect, type CSSProperties, type ReactNode } from 'react';
 import { useCurrentSession } from './focus/useSessions.ts';
 import { Panel } from '../../components/ui/Panel.tsx';
 import { ResourcesPanel } from './resources/ResourcesPanel.tsx';
@@ -13,22 +13,28 @@ import { FocusPanel } from './focus/FocusPanel.tsx';
 import { GoalsPanel } from './goals/GoalsPanel.tsx';
 import { SkillTrackerPanel } from './skills/SkillTrackerPanel.tsx';
 import { DEFAULT_WALLPAPER, useWallpaper } from '../../lib/useWallpaper.ts';
+import { usePager } from './usePager.ts';
+import './pages.css';
 
-/** Grid areas: goals and focus sit on the painting, the rest on slate below it. */
+/** Grid areas: goals and focus on the first page, then the progress and the plans pages. */
 type SlotId = 'goals' | 'focus' | 'skills' | 'heatmap' | 'sleep' | 'exercise' | 'calendar' | 'resources' | 'media';
 
 const PHOTO_SOURCE = 'https://commons.wikimedia.org/wiki/File:Vallee-brouillard.jpg';
 
+/** The dashboard's three pages, in order. */
+const PAGES = ['Today', 'Progress', 'Plans'] as const;
+
 /**
- * The fog-valley hero: time on the pale fog, today's agenda in glass on the
- * dark side, and Goals and Focus in glass on the painting below them. Then the
- * slate, opening with the skill tracker beside the year of focus (a third and two
- * thirds); six even tracks, one column under 900px.
+ * Three pages over the wallpaper, each a whole screen, turned with some force (usePager): Today
+ * (the time, today's agenda, Goals and Focus), Progress (the skill tracker beside the year of
+ * focus, then sleep and exercise) and Plans (the calendar beside resources and what's playing).
+ * Dots on the right say which is showing. A small window scrolls through them as one page.
  */
 export function Dashboard() {
   reserveForTimer();
   // The wallpaper chosen in Settings, else the fog photograph (which alone needs its credit).
   const wallpaper = useWallpaper();
+  const pager = usePager(PAGES.length);
   return (
     <>
       {/* The wallpaper is a layer of its own, fixed behind the page: the panels scroll over it and it stays put. */}
@@ -46,58 +52,83 @@ export function Dashboard() {
         />
         <div className="backdrop__scrim" />
       </div>
-      <section className="hero" data-hero aria-label="Today">
-        <div className="container hero__grid">
-          <div id="hero-time" className="hero__time"><TimePanel /></div>
-          <div id="hero-agenda" className="hero__agenda"><TodayAgenda /></div>
-        </div>
-        <div className="container hero__panels">
-          <Slot id="goals">
-            <GoalsPanel />
-          </Slot>
-          <Slot id="focus">
-            <FocusPanel />
-          </Slot>
-        </div>
-      </section>
+      <div ref={pager.ref} className={pager.paged ? 'dash is-paged' : 'dash'}>
+        <div
+          className="dash__track"
+          data-leaning={pager.lean !== 0 ? '' : undefined}
+          style={{ '--page': pager.page, '--lean': `${pager.lean}px` } as CSSProperties}
+        >
+          <section className="dash-page hero" data-page="0" data-hero aria-label="Today">
+            <div className="container hero__grid">
+              <div id="hero-time" className="hero__time"><TimePanel /></div>
+              <div id="hero-agenda" className="hero__agenda"><TodayAgenda /></div>
+            </div>
+            <div className="container hero__panels">
+              <Slot id="goals">
+                <GoalsPanel />
+              </Slot>
+              <Slot id="focus">
+                <FocusPanel />
+              </Slot>
+            </div>
+          </section>
 
-      <div className="container slate">
-        <div className="slate__grid">
-          <Slot id="skills">
-            <SkillTrackerPanel />
-          </Slot>
-          <Slot id="heatmap">
-            <YearOfFocusPanel />
-          </Slot>
-          <Slot id="sleep">
-            <SleepPanel />
-          </Slot>
-          <Slot id="exercise">
-            <ExercisePanel />
-          </Slot>
-          <Slot id="calendar">
-            <CalendarPanel />
-          </Slot>
-          <Slot id="resources">
-            <ResourcesPanel />
-          </Slot>
-          <Slot id="media">
-            <NowPlayingPanel />
-          </Slot>
-        </div>
-      </div>
+          <section className="dash-page" data-page="1" aria-label="Progress">
+            <div className="container dash-grid dash-grid--progress">
+              <Slot id="skills">
+                <SkillTrackerPanel />
+              </Slot>
+              <Slot id="heatmap">
+                <YearOfFocusPanel />
+              </Slot>
+              <Slot id="sleep">
+                <SleepPanel />
+              </Slot>
+              <Slot id="exercise">
+                <ExercisePanel />
+              </Slot>
+            </div>
+          </section>
 
-      <footer className="container foot">
-        {wallpaper === null && (
-          <p className="foot__credits">
-            Photograph:{' '}
-            <a href={PHOTO_SOURCE} target="_blank" rel="noreferrer">
-              Thomas Bresson
-            </a>{' '}
-            (CC BY 3.0), Wikimedia Commons
-          </p>
+          <section className="dash-page" data-page="2" aria-label="Plans">
+            <div className="container dash-grid dash-grid--plans">
+              <Slot id="calendar">
+                <CalendarPanel />
+              </Slot>
+              <Slot id="resources">
+                <ResourcesPanel />
+              </Slot>
+              <Slot id="media">
+                <NowPlayingPanel />
+              </Slot>
+            </div>
+            {wallpaper === null && (
+              <p className="container foot__credits">
+                Photograph:{' '}
+                <a href={PHOTO_SOURCE} target="_blank" rel="noreferrer">
+                  Thomas Bresson
+                </a>{' '}
+                (CC BY 3.0), Wikimedia Commons
+              </p>
+            )}
+          </section>
+        </div>
+
+        {pager.paged && (
+          <nav className="dash__dots" aria-label="Dashboard pages">
+            {PAGES.map((name, i) => (
+              <button
+                key={name}
+                className="dash__dot"
+                type="button"
+                aria-label={`Page ${i + 1}: ${name}`}
+                aria-current={pager.page === i ? 'page' : undefined}
+                onClick={() => pager.go(i)}
+              />
+            ))}
+          </nav>
         )}
-      </footer>
+      </div>
     </>
   );
 }

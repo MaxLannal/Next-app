@@ -6,6 +6,7 @@ import { Bars } from '../../../components/charts/Bars.tsx';
 import { EmptyState } from '../../../components/ui/EmptyState.tsx';
 import { Panel } from '../../../components/ui/Panel.tsx';
 import { Tabs } from '../../../components/ui/Tabs.tsx';
+import { usePaged } from '../usePager.ts';
 import './ExercisePanel.css';
 
 type Range = 'day' | 'week' | 'month' | 'year';
@@ -31,9 +32,13 @@ const queryKey = (range: Range) => ['exercise', range];
 const count = (v: number) => v.toLocaleString('en-US');
 const average = (v: number) => (Number.isFinite(v) ? v.toLocaleString('en-US', { maximumFractionDigits: 1 }) : '0');
 
+/** The bars' height; shorter in the dashboard's pages, where the panel has a fixed share of the screen. */
+const BARS_H = 104;
+const BARS_H_PAGED = 64;
+
 /**
- * Push-ups and squats: a row per exercise with today's total and quick adds,
- * then one range for both, and a small bar chart each with its ruled tally.
+ * Push-ups and squats: a row per exercise with today's total and quick adds, then a small bar
+ * chart each with its ruled tally. One range for both sits in the head, as Focus has its own.
  */
 export function ExercisePanel() {
   const queryClient = useQueryClient();
@@ -89,9 +94,14 @@ export function ExercisePanel() {
     }
   };
 
+  const failed = query.isError && rows === undefined;
   return (
-    <Panel title="Push-ups and squats" className="exercise">
-      {query.isError && rows === undefined ? (
+    <Panel
+      title="Push-ups and squats"
+      className="exercise"
+      actions={failed ? undefined : <Tabs options={RANGES} value={range} onChange={(v) => setRange(v as Range)} label="Range" />}
+    >
+      {failed ? (
         <EmptyState
           title="Couldn’t load your sets"
           line={messageOf(query.error, 'The hub didn’t answer.')}
@@ -120,10 +130,6 @@ export function ExercisePanel() {
               {error}
             </p>
           )}
-
-          <div className="ex-range">
-            <Tabs options={RANGES} value={range} onChange={(v) => setRange(v as Range)} label="Range" />
-          </div>
 
           <div className="ex-charts">
             {KINDS.map(({ kind, chart }) => (
@@ -229,12 +235,13 @@ function ExerciseRow({ label, today, busy, onLog, onUndo }: RowProps) {
 
 /** One exercise's chart and tally. The panel draws this only for a kind the reply has. */
 function ChartBody({ series, range, name }: { series: ExerciseSeries; range: Range; name: string }) {
+  const paged = usePaged();
   if (series.total === 0) {
     return <EmptyState title="Nothing yet" line="Add a set above and the bars fill in." />;
   }
   return (
     <>
-      <Bars data={series.buckets} height={104} format={count} label={`${name} by ${range}`} />
+      <Bars data={series.buckets} height={paged ? BARS_H_PAGED : BARS_H} format={count} label={`${name} by ${range}`} />
       <dl className="ex-tally">
         <div>
           <dt>Total</dt>

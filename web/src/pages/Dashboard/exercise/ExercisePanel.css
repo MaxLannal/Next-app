@@ -1,6 +1,10 @@
 /* Push-ups and squats: one row per exercise (label and today's count on the
-   left, quiet quick-add pills and Undo on the right), then one ruled range for
-   both charts, each a small bar chart over its ruled two-part tally. */
+   left, quiet quick-add pills and Undo on the right), then a small bar chart
+   each over its ruled two-part tally. The range for both sits in the head, as
+   Focus has its own: a dot on the chosen one, no rule under them. */
+
+.exercise .panel__head { flex-wrap: wrap; }
+.exercise .panel__actions .tabs { flex-wrap: nowrap; gap: 0 var(--space-md); border-bottom: 0; }
 
 .ex-rows { list-style: none; margin: 0; padding: 0; }
 
@@ -26,8 +30,6 @@
 
 /* Apricot for what didn't take, in one calm line. */
 .ex-error { margin-top: var(--space-sm); font-size: var(--text-sm); color: var(--color-accent-2); }
-
-.ex-range { margin-top: var(--space-md); }
 
 .ex-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); margin-top: var(--space-lg); }
 .ex-chart { display: grid; align-content: start; gap: var(--space-sm); min-width: 0; }

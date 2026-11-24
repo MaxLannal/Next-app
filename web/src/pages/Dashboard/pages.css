@@ -1,0 +1,125 @@
+/* The dashboard's three pages: Today, Progress and Plans (Dashboard.tsx, usePager.ts).
+
+   Wide and tall enough, the dashboard is a frame the size of the window with its pages on a track
+   behind it; usePager turns them with some force and the track glides to the next. Progress and
+   Plans fill the same box as Today's agenda and panels, so every page sits the same distance from
+   the window's edges, and their panels take a compact form to fit it. A smaller window scrolls
+   through all three as one long page, every panel at its full size. */
+
+.dash { --glass: oklch(20% 0.018 268 / 0.74); --hero-panel-h: 340px; position: relative; }
+
+.dash-page:not(.hero) { padding-block: var(--space-lg); }
+.dash-grid { display: grid; gap: var(--space-lg); }
+/* Progress: the skill tracker a third beside the year of focus, then sleep and exercise in halves. */
+.dash-grid--progress { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-areas: "skills skills heatmap heatmap heatmap heatmap" "sleep sleep sleep exercise exercise exercise"; }
+/* Plans: the calendar three fifths, resources and what's playing stacked beside it. With nothing
+   playing (the panel draws nothing), resources has the column to itself. */
+.dash-grid--plans { grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-areas: "calendar calendar calendar resources resources" "calendar calendar calendar media media"; }
+.dash-grid--plans:has(> #media:empty) { grid-template-areas: "calendar calendar calendar resources resources" "calendar calendar calendar resources resources"; }
+/* An empty slot naming an area the grid no longer has would add a track of its own. */
+.dash-grid--plans > #media:empty { display: none; }
+
+/* Which page is showing, down the right edge; each dot turns to its page. */
+.dash__dots { position: absolute; z-index: 5; top: 50%; right: 18px; display: grid; gap: 10px; transform: translateY(-50%); }
+.dash__dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--color-light) 45%, transparent); box-shadow: 0 0 0 1px oklch(10% 0.01 268 / 0.35); cursor: pointer; transition: height var(--dur-short) var(--ease-out), background-color var(--dur-short) var(--ease-out); }
+.dash__dot:hover { background: color-mix(in oklab, var(--color-light) 75%, transparent); }
+.dash__dot[aria-current="page"] { height: 26px; background: var(--color-accent); }
+.dash__dot:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
+
+/* ── In pages ───────────────────────────────────────────────────────────── */
+.dash.is-paged {
+  --page-turn: 760ms;
+  /* A short window takes its height from Goals and Focus first, so Today still fits. */
+  --hero-panel-h: clamp(300px, calc(100svh - var(--dock-h, 0px) - 380px), 340px);
+  /* Today's box: the agenda and the room under it, over Goals and Focus. */
+  --page-box: calc(260px + var(--hero-panel-h));
+  height: calc(100svh - var(--dock-h, 0px));
+  overflow: hidden;
+}
+.dash.is-paged .dash__track { height: 100%; transform: translate3d(0, calc(var(--page) * -100% + var(--lean)), 0); transition: transform var(--page-turn) cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; }
+/* While a push leans the page, it follows the push closely. */
+.dash.is-paged .dash__track[data-leaning] { transition-duration: 180ms; }
+.dash.is-paged .dash-page { position: relative; height: 100%; }
+.dash.is-paged .hero { min-height: 0; }
+/* Progress and Plans: their box centred under the room Today keeps above its agenda (.hero__grid's
+   top padding), so it starts and ends where Today's does. */
+.dash.is-paged .dash-page:not(.hero) { display: flex; flex-direction: column; justify-content: center; padding: calc(var(--nav-h) + var(--space-lg)) 0 0; }
+.dash.is-paged .dash-grid { flex: none; width: 100%; height: min(var(--page-box), 100%); }
+/* The year of focus needs a little more height than exercise under it. */
+.dash.is-paged .dash-grid--progress { grid-template-rows: minmax(0, 13fr) minmax(0, 12fr); }
+.dash.is-paged .dash-grid--plans { grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }
+.dash.is-paged .foot__credits { position: absolute; right: 0; bottom: var(--space-md); left: 0; }
+
+/* Each panel fills its share of the box: a size its contents can measure (cqh). One with more than
+   fits scrolls inside. */
+.dash.is-paged .dash-grid > .slot { container-type: size; }
+.dash.is-paged .dash-grid .panel { height: 100%; min-height: 0; padding-block: 20px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.dash.is-paged .dash-grid .panel__head { align-items: center; padding-bottom: var(--space-md); }
+
+/* The skill tracker: its way in moves up beside the title, and the pyramid takes the height left. */
+.dash.is-paged .skilltile__body { gap: 2px; }
+.dash.is-paged .skilltile__body .pyramid { width: auto; height: clamp(56px, calc(100cqh - 172px), 150px); margin-bottom: var(--space-sm); }
+.dash.is-paged .skilltile__meta { margin: 2px 0 0; }
+.dash.is-paged .skilltile__enter { position: absolute; top: 13px; right: var(--space-lg); min-height: 34px; padding: 0 var(--space-md); font-size: var(--text-sm); }
+
+/* The year of focus: the year across the top; under it the ring with its legend beside it (three
+   to a column, more in columns beside), then the tally. The ring's figures are set larger in its
+   own units, so they read the same size on a smaller ring. */
+.dash.is-paged .yof { gap: var(--space-sm); }
+.dash.is-paged .yof__side { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-xl); }
+.dash.is-paged .yof__figure { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px var(--space-md); justify-items: stretch; }
+.dash.is-paged .yof__figure .pie { grid-row: 1 / span 3; width: 88px; height: 88px; }
+.dash.is-paged .yof .pie__top { font-size: 1.5rem; }
+.dash.is-paged .yof .pie__bottom { font-size: 1.1rem; }
+.dash.is-paged .yof__where { line-height: 1.3; }
+.dash.is-paged .yof .legend { display: grid; line-height: 1.3; grid-auto-flow: column; grid-template-rows: repeat(3, auto); grid-auto-columns: minmax(0, 1fr); gap: 0 var(--space-lg); font-size: var(--text-sm); }
+.dash.is-paged .yof .legend__row { grid-template-columns: 8px minmax(0, 1fr) auto; gap: var(--space-sm); padding: 2px 0; border-top: 0; }
+.dash.is-paged .yof .legend__share { display: none; }
+.dash.is-paged .yof__tally { width: auto; gap: var(--space-sm) var(--space-lg); padding-top: 0; border-top: 0; }
+.dash.is-paged .yof__tally > div { padding-top: 0; }
+.dash.is-paged .yof__tally dt { line-height: 1.3; }
+
+/* Sleep: last night on the left, the strip of nights beside it. */
+.dash.is-paged .sleep { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; gap: var(--space-sm) var(--space-lg); }
+.dash.is-paged .sleep > :not(.sleep__night):not(.nights) { grid-column: 1 / -1; }
+.dash.is-paged .sleep__night { padding-bottom: 0; border-bottom: 0; }
+.dash.is-paged .sleep__when { flex-wrap: wrap; row-gap: 0; }
+.dash.is-paged .sleep .nights { align-self: end; }
+
+/* Exercise: tighter rows and pills, and each chart's tally on its title's line. */
+.dash.is-paged .ex-row { padding-block: var(--space-sm); }
+.dash.is-paged .exercise .btn-sm, .dash.is-paged .ex-custom__field { min-height: 32px; }
+.dash.is-paged .ex-row__main { gap: var(--space-sm); }
+.dash.is-paged .ex-row__label { white-space: nowrap; }
+.dash.is-paged .ex-quick { min-width: 42px; }
+.dash.is-paged .ex-custom__field { width: 7.5ch; }
+.dash.is-paged .ex-row:first-child { padding-top: 0; }
+.dash.is-paged .ex-row:last-child { padding-bottom: 0; }
+.dash.is-paged .ex-charts { margin-top: var(--space-md); }
+.dash.is-paged .ex-chart { grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-xs) var(--space-sm); }
+.dash.is-paged .ex-chart > :not(.ex-chart__title):not(.ex-tally) { grid-column: 1 / -1; }
+.dash.is-paged .ex-tally { grid-row: 1; grid-column: 2; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 var(--space-md); margin: 0; }
+.dash.is-paged .ex-tally > div { display: flex; align-items: baseline; gap: 5px; padding-top: 0; border-top: 0; }
+.dash.is-paged .ex-tally dd { margin: 0; font-size: 0.9375rem; }
+/* An empty chart says so in a line or two, not a card. */
+.dash.is-paged .ex-chart .empty { display: block; padding: var(--space-sm) 12px; }
+.dash.is-paged .ex-chart .empty__title, .dash.is-paged .ex-chart .empty__line { display: inline; font-size: var(--text-sm); }
+.dash.is-paged .ex-chart .empty__title::after { content: " · "; color: var(--color-muted); font-weight: 400; }
+/* The range in the head sits as close as the title, and stays on its line. */
+.dash.is-paged .exercise .panel__actions .tabs { gap: 0 var(--space-sm); }
+.dash.is-paged .exercise .panel__actions .tab { padding-block: 4px; }
+.dash.is-paged .ex-chart__wait { min-height: 0; }
+
+/* The calendar: its days give up height before anything else does. */
+.dash.is-paged .month__day { min-height: clamp(36px, calc((100cqh - 330px) / 6), 52px); padding-block: 4px; }
+.dash.is-paged .cal__day { padding-top: var(--space-md); }
+
+/* ── Narrow screens ─────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .dash-grid--progress { grid-template-columns: minmax(0, 1fr); grid-template-areas: "skills" "heatmap" "sleep" "exercise"; }
+  .dash-grid--plans, .dash-grid--plans:has(> #media:empty) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "calendar" "resources" "media"; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash.is-paged .dash__track { transition: none; }
+}
