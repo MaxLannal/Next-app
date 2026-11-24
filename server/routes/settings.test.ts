@@ -193,3 +193,33 @@ it('refuses a file that is not a photo, a photo not in the bank, and a way out o
   expect((await t.req('GET', '/api/settings/wallpaper/image/..%2Fconfig.json')).status).toBe(404);
   expect((await t.req('DELETE', '/api/settings/wallpaper/photos/..%2Fconfig.json')).status).toBe(404);
 });
+
+const layoutOf = async (res: Response) => ((await res.json()) as { layout: { pages: { name: string; panels: { id: string; w: number; h: number }[] }[] } }).layout;
+
+it('keeps the dashboard layout edited by hand, made safe to draw, and puts the first three back on null', async () => {
+  const first = await layoutOf(await t.req('GET', '/api/settings/layout'));
+  expect(first.pages.map((p) => p.name)).toEqual(['Today', 'Progress', 'Plans']);
+
+  const sent = {
+    pages: [
+      { name: '  Mornings ', panels: [{ id: 'sleep', w: 6, h: 2 }, { id: 'nope', w: 3, h: 1 }] },
+      { name: '', panels: [{ id: 'sleep', w: 2, h: 1 }, { id: 'goals', w: 5, h: 3 }] },
+    ],
+  };
+  const saved = await layoutOf(await t.req('PUT', '/api/settings/layout', { layout: sent }));
+  expect(saved).toEqual({
+    pages: [
+      { name: 'Mornings', panels: [{ id: 'sleep', w: 6, h: 2 }] },
+      { name: 'Page 2', panels: [{ id: 'goals', w: 3, h: 1 }] },
+    ],
+  });
+  expect(await layoutOf(await t.req('GET', '/api/settings/layout'))).toEqual(saved);
+
+  // Fewer pages than before: the whole list is replaced, not merged into the old one.
+  const one = await layoutOf(await t.req('PUT', '/api/settings/layout', { layout: { pages: [{ name: 'Only', panels: [] }] } }));
+  expect(one.pages).toEqual([{ name: 'Only', panels: [] }]);
+
+  const reset = await layoutOf(await t.req('PUT', '/api/settings/layout', { layout: null }));
+  expect(reset.pages.map((p) => p.name)).toEqual(['Today', 'Progress', 'Plans']);
+  expect((await t.req('PUT', '/api/settings/layout', { pages: [] })).status).toBe(400);
+});

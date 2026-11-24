@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import type { DashboardLayout } from '../shared/layout.ts';
 
 export type HubConfig = {
   port: number;
@@ -13,6 +14,8 @@ export type HubConfig = {
   mapbox: { token: string | null };
   /** The dashboard's wallpaper, a file in `files/wallpaper/`; null for the fog photograph. */
   wallpaper: { file: string | null };
+  /** The dashboard's pages and where its panels sit, as edited by hand; null for the first three. */
+  dashboard: { layout: DashboardLayout | null };
   keepAwake: boolean;
   sleepTargetHours: number;
 };
@@ -47,6 +50,7 @@ function defaults(): HubConfig {
     github: { repo: null },
     mapbox: { token: null },
     wallpaper: { file: null },
+    dashboard: { layout: null },
     keepAwake: false,
     sleepTargetHours: 8,
   };

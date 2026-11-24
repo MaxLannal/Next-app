@@ -4,6 +4,7 @@ import { extname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { normalizeLayout } from '../../shared/layout.ts';
 import type { SettingsView } from '../../shared/types.ts';
 import { hashPasscode, isLoopback } from '../auth.ts';
 import { hubTimeZone } from '../config.ts';
@@ -229,6 +230,17 @@ export function settingsRoutes(ctx: AppContext): Hono {
     if (file !== null && (typeof file !== 'string' || !inBank(file))) return c.json({ error: 'That photo isn’t in the bank' }, 400);
     ctx.config.update({ wallpaper: { file } });
     return c.json(state());
+  });
+
+  // The dashboard's pages and where its panels sit. Whatever is sent is made safe to draw first;
+  // null puts back the first three pages.
+  const layout = () => normalizeLayout(ctx.config.get().dashboard?.layout ?? null);
+  routes.get('/layout', (c) => c.json({ layout: layout() }));
+  routes.put('/layout', async (c) => {
+    const body: unknown = await c.req.json().catch(() => undefined);
+    if (!isRecord(body) || !('layout' in body)) return c.json({ error: 'Send { layout }' }, 400);
+    ctx.config.update({ dashboard: { layout: body.layout === null ? null : normalizeLayout(body.layout) } });
+    return c.json({ layout: layout() });
   });
 
   routes.delete('/wallpaper/photos/:file', (c) => {

@@ -53,20 +53,19 @@ export function usePaged(): boolean {
 export function usePager(count: number) {
   const ref = useRef<HTMLDivElement>(null);
   const paged = usePaged();
-  const [page, setPage] = useState(0);
+  // The page asked for, which may be one that only exists once the layout catches up (a page just
+  // added); the page shown is the nearest one there is.
+  const [wanted, setWanted] = useState(0);
+  const page = Math.min(wanted, Math.max(0, count - 1));
   const [lean, setLean] = useState(0);
   const live = useRef({ page, push: 0, held: false, inner: false, quiet: 0 as ReturnType<typeof setTimeout> | 0, turnedAt: -Infinity });
   live.current.page = page;
 
-  const go = useCallback(
-    (to: number) => {
-      const next = Math.max(0, Math.min(count - 1, to));
-      live.current.turnedAt = performance.now();
-      setLean(0);
-      setPage(next);
-    },
-    [count],
-  );
+  const go = useCallback((to: number) => {
+    live.current.turnedAt = performance.now();
+    setLean(0);
+    setWanted(Math.max(0, to));
+  }, []);
 
   useEffect(() => {
     const root = ref.current;

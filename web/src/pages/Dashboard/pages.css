@@ -1,23 +1,28 @@
-/* The dashboard's three pages: Today, Progress and Plans (Dashboard.tsx, usePager.ts).
+/* The dashboard's pages (Dashboard.tsx, usePager.ts, the layout in shared/layout.ts).
 
    Wide and tall enough, the dashboard is a frame the size of the window with its pages on a track
-   behind it; usePager turns them with some force and the track glides to the next. Progress and
-   Plans fill the same box as Today's agenda and panels, so every page sits the same distance from
-   the window's edges, and their panels take a compact form to fit it. A smaller window scrolls
-   through all three as one long page, every panel at its full size. */
+   behind it; usePager turns them with some force and the track glides to the next. Every page
+   after the first fills the same box as the first page's agenda and panels, so all sit the same
+   distance from the window's edges, and their panels take a compact form to fit it. A smaller
+   window scrolls through the pages as one long page, every panel at its full size. */
 
 .dash { --glass: oklch(20% 0.018 268 / 0.74); --hero-panel-h: 340px; position: relative; }
 
 .dash-page:not(.hero) { padding-block: var(--space-lg); }
-.dash-grid { display: grid; gap: var(--space-lg); }
-/* Progress: the skill tracker a third beside the year of focus, then sleep and exercise in halves. */
-.dash-grid--progress { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-areas: "skills skills heatmap heatmap heatmap heatmap" "sleep sleep sleep exercise exercise exercise"; }
-/* Plans: the calendar three fifths, resources and what's playing stacked beside it. With nothing
-   playing (the panel draws nothing), resources has the column to itself. */
-.dash-grid--plans { grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-areas: "calendar calendar calendar resources resources" "calendar calendar calendar media media"; }
-.dash-grid--plans:has(> #media:empty) { grid-template-areas: "calendar calendar calendar resources resources" "calendar calendar calendar resources resources"; }
-/* An empty slot naming an area the grid no longer has would add a track of its own. */
-.dash-grid--plans > #media:empty { display: none; }
+/* Each page is six columns; a panel takes two (a third), three, four or all six, and one row or
+   two, in the order the layout gives, filling gaps where a later one fits. */
+.dash-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-flow: row dense; gap: var(--space-lg); }
+.dash-grid > .slot { position: relative; grid-column: span var(--w, 3); grid-row: span var(--h, 1); }
+.slot__body { display: grid; min-width: 0; min-height: 0; }
+/* A panel with nothing to show (Now playing, with nothing playing) takes no room, and one the
+   same size before it takes the rows it leaves. */
+.dash-grid > .slot:not(.is-editing):has(> .slot__body:empty) { display: none; }
+.dash-grid > .slot[data-h="1"][data-w="2"]:has(+ .slot[data-h="1"][data-w="2"]:not(.is-editing) > .slot__body:empty),
+.dash-grid > .slot[data-h="1"][data-w="3"]:has(+ .slot[data-h="1"][data-w="3"]:not(.is-editing) > .slot__body:empty),
+.dash-grid > .slot[data-h="1"][data-w="4"]:has(+ .slot[data-h="1"][data-w="4"]:not(.is-editing) > .slot__body:empty),
+.dash-grid > .slot[data-h="1"][data-w="6"]:has(+ .slot[data-h="1"][data-w="6"]:not(.is-editing) > .slot__body:empty) { grid-row: span 2; }
+/* The first page's panels keep one short height, so the painting shows above and below them. */
+.hero__panels { grid-auto-rows: var(--hero-panel-h); }
 
 /* Which page is showing, down the right edge; each dot turns to its page. */
 .dash__dots { position: absolute; z-index: 5; top: 50%; right: 18px; display: grid; gap: 10px; transform: translateY(-50%); }
@@ -44,17 +49,16 @@
 /* Progress and Plans: their box centred under the room Today keeps above its agenda (.hero__grid's
    top padding), so it starts and ends where Today's does. */
 .dash.is-paged .dash-page:not(.hero) { display: flex; flex-direction: column; justify-content: center; padding: calc(var(--nav-h) + var(--space-lg)) 0 0; }
-.dash.is-paged .dash-grid { flex: none; width: 100%; height: min(var(--page-box), 100%); }
-/* The year of focus needs a little more height than exercise under it. */
-.dash.is-paged .dash-grid--progress { grid-template-rows: minmax(0, 13fr) minmax(0, 12fr); }
-.dash.is-paged .dash-grid--plans { grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }
+.dash.is-paged .dash-page:not(.hero) .dash-grid { flex: none; width: 100%; height: min(var(--page-box), 100%); grid-auto-rows: minmax(0, 1fr); }
+/* More than a row of panels on the first page share its panels' height. */
+.dash.is-paged .hero__panels { height: var(--hero-panel-h); grid-auto-rows: minmax(0, 1fr); }
 .dash.is-paged .foot__credits { position: absolute; right: 0; bottom: var(--space-md); left: 0; }
 
 /* Each panel fills its share of the box: a size its contents can measure (cqh). One with more than
    fits scrolls inside. */
 .dash.is-paged .dash-grid > .slot { container-type: size; }
-.dash.is-paged .dash-grid .panel { height: 100%; min-height: 0; padding-block: 20px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.dash.is-paged .dash-grid .panel__head { align-items: center; padding-bottom: var(--space-md); }
+.dash.is-paged .dash-page:not(.hero) .dash-grid .panel { height: 100%; min-height: 0; padding-block: 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.dash.is-paged .dash-page:not(.hero) .dash-grid .panel__head { align-items: center; padding-bottom: var(--space-md); }
 
 /* The skill tracker: its way in moves up beside the title, and the pyramid takes the height left. */
 .dash.is-paged .skilltile__body { gap: 2px; }
@@ -68,7 +72,7 @@
 .dash.is-paged .yof { gap: var(--space-sm); }
 .dash.is-paged .yof__side { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-xl); }
 .dash.is-paged .yof__figure { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px var(--space-md); justify-items: stretch; }
-.dash.is-paged .yof__figure .pie { grid-row: 1 / span 3; width: 88px; height: 88px; }
+.dash.is-paged .yof__figure .pie { grid-row: 1 / span 3; width: 84px; height: 84px; }
 .dash.is-paged .yof .pie__top { font-size: 1.5rem; }
 .dash.is-paged .yof .pie__bottom { font-size: 1.1rem; }
 .dash.is-paged .yof__where { line-height: 1.3; }
@@ -114,10 +118,67 @@
 .dash.is-paged .month__day { min-height: clamp(36px, calc((100cqh - 330px) / 6), 52px); padding-block: 4px; }
 .dash.is-paged .cal__day { padding-top: var(--space-md); }
 
+/* ── Edit mode ──────────────────────────────────────────────────────────────
+   Edit layout (top right) opens it. Each panel shows a strip with its name, its size and where it
+   goes; the panel itself rests dimmed and still under it, and the whole of it can be dragged.
+   Pages show their names, to change, and Delete; a bar along the foot holds the hidden panels,
+   Add page, Reset and Done. */
+.dash__edit { position: absolute; z-index: 6; top: 16px; right: 18px; display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 0 13px; border: 0; border-radius: var(--radius-pill); background: oklch(14% 0.014 268 / 0.45); color: var(--color-ink-2); font: 500 var(--text-xs)/1 var(--font-body); cursor: pointer; opacity: 0.75; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); transition: opacity var(--dur-short) var(--ease-out), background-color var(--dur-short) var(--ease-out); }
+.dash__edit svg { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.dash__edit:hover, .dash__edit:focus-visible { opacity: 1; background: oklch(14% 0.014 268 / 0.72); color: var(--color-ink); }
+.dash__edit:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.dash-grid > .slot.is-editing { cursor: grab; }
+.slot.is-editing > .slot__body { opacity: 0.5; filter: saturate(0.7); }
+.slot.is-dragging { opacity: 0.35; }
+.slot__edit { position: absolute; inset: 0; z-index: 2; border-radius: var(--radius-card); background: oklch(12% 0.014 268 / 0.22); box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--color-accent) 55%, transparent); pointer-events: none; }
+.slot__strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin: 10px; padding: 6px 6px 6px 12px; border-radius: 16px; background: oklch(16% 0.016 268 / 0.9); box-shadow: 0 8px 20px -10px oklch(5% 0.02 268 / 0.7); pointer-events: auto; }
+.slot__name { display: inline-flex; align-items: center; gap: 8px; color: var(--color-ink); font: 500 var(--text-sm)/1.2 var(--font-display); }
+.slot__grip { color: var(--color-muted); }
+.slot__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.slot__tool { display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 7px; border: 0; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--color-light) 8%, transparent); color: var(--color-ink); font: 500 var(--text-sm)/1 var(--font-body); cursor: pointer; }
+.slot__tool--text { font-size: var(--text-xs); }
+.slot__tool:hover:not(:disabled) { background: color-mix(in oklab, var(--color-light) 16%, transparent); }
+.slot__tool:disabled { opacity: 0.35; cursor: default; }
+.slot__tool[aria-pressed="true"] { background: var(--color-accent); color: var(--color-accent-ink); }
+.slot__size { min-width: 6.2em; color: var(--color-muted); font-size: var(--text-xs); text-align: center; }
+.slot__page { height: 28px; max-width: 9em; padding: 0 8px; border: 0; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--color-light) 8%, transparent); color: var(--color-ink); font: 500 var(--text-xs)/1 var(--font-body); }
+.slot__tool:focus-visible, .slot__page:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* A narrow panel's strip drops the size's name; − and + still say it in their own names. */
+@container (max-width: 420px) { .slot__size { display: none; } }
+/* Where a dragged panel would land: a lit bar in the gap before or after a panel. */
+.slot.drop-before::before, .slot.drop-after::after { content: ""; position: absolute; z-index: 3; top: 8px; bottom: 8px; width: 4px; border-radius: 2px; background: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-accent) 22%, transparent); }
+.slot.drop-before::before { left: calc(var(--space-lg) / -2 - 2px); }
+.slot.drop-after::after { right: calc(var(--space-lg) / -2 - 2px); }
+.dash-empty { grid-column: 1 / -1; display: grid; place-items: center; min-height: 200px; margin: 0; padding: var(--space-xl); border: 1.5px dashed color-mix(in oklab, var(--color-light) 30%, transparent); border-radius: var(--radius-card); background: oklch(14% 0.014 268 / 0.35); color: var(--color-ink-2); text-align: center; }
+.dash-empty.is-aimed { border-color: var(--color-accent); color: var(--color-ink); }
+
+.page-head { display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md); }
+.dash.is-paged .page-head { position: absolute; z-index: 4; top: 14px; right: 0; left: 0; margin: 0; pointer-events: none; }
+.page-head > * { pointer-events: auto; }
+.page-head__name { width: min(18rem, 60%); height: 36px; padding: 0 14px; border: 0; border-radius: var(--radius-pill); background: oklch(14% 0.014 268 / 0.72); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 16%, transparent); color: var(--color-ink); font: 500 0.9375rem/1 var(--font-display); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.page-head__name:focus-visible { outline: none; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 20%, transparent), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent); }
+.page-head__delete { background: oklch(14% 0.014 268 / 0.6); }
+
+.dash.is-editing .dash__dot { width: 12px; height: 12px; }
+.dash.is-editing .dash__dot[aria-current="page"] { height: 30px; }
+
+.edit-bar { position: fixed; z-index: 30; right: 0; bottom: calc(var(--dock-h, 0px) + 18px); left: var(--rail-w, 0px); display: flex; justify-content: center; padding: 0 var(--space-md); pointer-events: none; }
+.edit-bar__inner { --glass: oklch(16% 0.016 268 / 0.88); display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-sm) var(--space-md); max-width: min(100%, 980px); padding: 10px 10px 10px 18px; border-radius: 24px; pointer-events: auto; }
+.edit-bar__lead { margin: 0; color: var(--color-ink-2); font-size: var(--text-sm); }
+.edit-bar__hidden { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.edit-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px dashed color-mix(in oklab, var(--color-light) 30%, transparent); border-radius: var(--radius-pill); background: transparent; color: var(--color-ink); font: 500 var(--text-xs)/1 var(--font-body); cursor: grab; }
+.edit-chip span { color: var(--color-accent); font-size: 1rem; }
+.edit-chip:hover { border-color: var(--color-accent); }
+.edit-chip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.edit-bar__acts { display: flex; gap: 6px; }
+.edit-bar .is-asking { background: var(--color-accent-2); color: oklch(18% 0.02 50); }
+
 /* ── Narrow screens ─────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .dash-grid--progress { grid-template-columns: minmax(0, 1fr); grid-template-areas: "skills" "heatmap" "sleep" "exercise"; }
-  .dash-grid--plans, .dash-grid--plans:has(> #media:empty) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "calendar" "resources" "media"; }
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
+  .dash-grid > .slot, .dash-grid > .slot[data-h] { grid-column: auto; grid-row: auto; }
+  .hero__panels { grid-auto-rows: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
