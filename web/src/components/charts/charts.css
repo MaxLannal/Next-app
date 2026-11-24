@@ -36,6 +36,7 @@
 /* ── Heatmap: 11 px cells, 3 px apart; scrolls sideways on a phone ──────── */
 .heatmap { position: relative; min-width: 0; }
 .heatmap__scroll { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.heatmap__svg { display: block; }
 .heatmap__cell { cursor: default; }
 .heatmap__cell:hover { stroke: color-mix(in oklab, var(--color-light) 45%, transparent); stroke-width: 1px; }
 .heatmap__cell:focus { outline: none; }

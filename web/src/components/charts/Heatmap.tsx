@@ -1,5 +1,5 @@
 import type { HeatmapDay } from '@shared/types.ts';
-import { useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { HEAT_COLORS } from './colors.ts';
 import './charts.css';
 
@@ -89,15 +89,33 @@ export function Heatmap({ year, days, onActiveDay, describe, label, pinned, onPi
   const activeDay = active?.day ?? null;
   const ringed = focused !== null ? cells[index.get(focused) ?? -1] : hovered !== null || !pinned ? undefined : cells[index.get(pinned) ?? -1];
 
+  // The grid's own size; a page can draw it larger (it scales from its viewBox, centred).
+  const W = LEFT + weeks * PITCH - (PITCH - CELL);
+  const H = TOP + 7 * PITCH - (PITCH - CELL);
+  const [fit, setFit] = useState({ s: 1, dx: 0 });
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const s = Math.min(svg.clientWidth / W, svg.clientHeight / H) || 1;
+      const dx = Math.max(0, (svg.clientWidth - W * s) / 2);
+      setFit((f) => (Math.abs(f.s - s) < 0.001 && Math.abs(f.dx - dx) < 0.5 ? f : { s, dx }));
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(svg);
+    return () => watch.disconnect();
+  }, [W, H]);
+
   // The tip follows the scroll without re-rendering the grid: its transform is
   // written straight to the node, here and from the scroll handler.
   const placeTip = (scrollLeft: number) => {
     if (tipRef.current === null || active === undefined) return;
-    tipRef.current.style.transform = `translateX(${center(active) - scrollLeft}px)`;
+    tipRef.current.style.transform = `translateX(${center(active) * fit.s + fit.dx - scrollLeft}px)`;
   };
   useEffect(() => {
     placeTip(svgRef.current?.parentElement?.scrollLeft ?? 0);
-  }, [active, hovered]);
+  }, [active, hovered, fit]);
 
   // Report changes only: not the initial null and not every re-render. Compared
   // by content, so a parent passing a fresh `days` array each render can't loop.
@@ -161,8 +179,12 @@ export function Heatmap({ year, days, onActiveDay, describe, label, pinned, onPi
           aria-label={label ?? `Days of ${year}`}
           aria-rowcount={7}
           aria-colcount={weeks}
-          width={LEFT + weeks * PITCH - (PITCH - CELL)}
-          height={TOP + 7 * PITCH - (PITCH - CELL)}
+          className="heatmap__svg"
+          width={W}
+          height={H}
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="xMidYMin meet"
+          style={{ '--heat-w': `${W}px`, '--heat-h': `${H}px`, '--heat-s': fit.s } as CSSProperties}
           onKeyDown={onKeyDown}
           onFocus={onFocus}
           onBlur={() => setFocused(null)}
@@ -215,7 +237,7 @@ export function Heatmap({ year, days, onActiveDay, describe, label, pinned, onPi
         </svg>
       </div>
       {active && (
-        <div className="heatmap__tip" style={{ top: TOP + active.row * PITCH }}>
+        <div className="heatmap__tip" style={{ top: (TOP + active.row * PITCH) * fit.s }}>
           <div
             ref={tipRef}
             className={`chart-tip${active.col < EDGE_COLS ? ' is-start' : active.col >= weeks - EDGE_COLS ? ' is-end' : ''}`}

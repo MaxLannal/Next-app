@@ -74,9 +74,14 @@
      to a column, more in columns beside), then the tally. The ring's figures are set larger in its
      own units, so they read the same size on a smaller ring. */
   .dash .yof { gap: var(--space-sm); }
+  /* The year fills its panel: as wide as the panel, as tall as it leaves room for, never smaller
+     than its own size (a narrow one scrolls). Its labels grow a little with it, not all the way. */
+  .dash .yof__chart .heatmap__svg { width: max(100%, var(--heat-w)); height: auto; max-height: max(var(--heat-h), calc(100cqh - 215px)); }
+  .dash .yof__chart .chart-axis { font-size: calc(0.6875rem * min(1.3, var(--heat-s)) / var(--heat-s)); }
   .dash .yof__side { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-xl); }
   .dash .yof__figure { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px var(--space-md); justify-items: stretch; }
-  .dash .yof__figure .pie { grid-row: 1 / span 3; width: 84px; height: 84px; }
+  /* The ring takes the height the year leaves (the year is about 0.147 as tall as it is wide). */
+  .dash .yof__figure .pie { --ring: clamp(84px, calc(100cqh - 122px - (100cqw - 48px) * 0.147), 200px); grid-row: 1 / span 3; width: var(--ring); height: var(--ring); }
   .dash .yof .pie__top { font-size: 1.5rem; }
   .dash .yof .pie__bottom { font-size: 1.1rem; }
   .dash .yof__where { line-height: 1.3; }
