@@ -15,7 +15,7 @@ import {
   updateAttachment,
   type AttachmentFilter,
 } from '../repo/attachments.ts';
-import { isDerivedLatex, processImage, readable, rewriteLatexFile } from '../services/vision.ts';
+import { isDerivedLatex, processImage, readable, rewriteLatexFile, setReading } from '../services/vision.ts';
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 const ID = '/:id{[0-9]+}';
@@ -147,6 +147,17 @@ export function attachmentRoutes(ctx: AppContext): Hono {
     if (!readable(attachment.kind) || attachment.parentId !== null) return c.json({ error: 'Not a photo or PDF' }, 400);
     ctx.jobs.enqueue('vision', () => processImage(ctx, attachment.id));
     return c.body(null, 202);
+  });
+
+  // A reading given by hand (LaTeX), filed as Claude's would be: for when the gateway can't read it.
+  routes.put(`${ID}/reading`, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const latex = typeof body === 'object' && body !== null ? (body as { latex?: unknown }).latex : undefined;
+    if (typeof latex !== 'string' || latex.length > 200_000) return c.json({ error: 'Send { latex } as text' }, 400);
+    const result = setReading(ctx, Number(c.req.param('id')), latex);
+    if (result === null) return c.json({ error: 'Not a photo or PDF' }, 404);
+    if (result === false) return c.json({ error: "A reading can't be empty" }, 400);
+    return c.json(result);
   });
 
   routes.delete(ID, (c) => {

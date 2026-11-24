@@ -526,3 +526,24 @@ describe('when a reading fails', () => {
     expect((await getAttachment(broken.id)).visionStatus).toBe('failed');
   });
 });
+
+describe('a reading given by hand', () => {
+  it('files LaTeX for a photo exactly as a reading would be, replacing a failed one', async () => {
+    t.fakes.claude.readImage = async () => {
+      throw Object.assign(new Error('402'), { status: 402 });
+    };
+    const { list } = await uploadImage('IMG_1950.HEIC');
+    await t.jobs.drain();
+    const id = list[0]!.id;
+
+    const res = await t.req('PUT', `/api/attachments/${id}/reading`, { latex: '\\textbf{7.1} Let $a<b$.' });
+    expect(res.status).toBe(200);
+    const photo = (await res.json()) as Attachment;
+    expect([photo.visionStatus, photo.visionError, photo.extractedText]).toEqual(['done', null, 'Handwritten work']);
+    expect(childOf(id)?.filename).toBe('IMG_1950.tex');
+    expect(readStored(childOf(id)!.id)).toBe(TEX_TEMPLATE('\\textbf{7.1} Let $a<b$.'));
+
+    expect((await t.req('PUT', `/api/attachments/${id}/reading`, { latex: '  ' })).status).toBe(400);
+    expect((await t.req('PUT', `/api/attachments/${childOf(id)!.id}/reading`, { latex: 'x' })).status).toBe(404);
+  });
+});

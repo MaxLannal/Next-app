@@ -95,28 +95,48 @@ export async function processImage(ctx: AppContext, attachmentId: number): Promi
     const reading = photo.kind === 'pdf' ? await readPdf(ctx, found.file, jpeg) : await readPhoto(ctx, found.file, jpeg);
 
     if (!getAttachment(ctx, photo.id)) return; // deleted while reading
-    // A re-run replaces the earlier answer; nothing else is ever derived from a photo.
-    const children = ctx.db.prepare('SELECT id FROM attachments WHERE parent_id = ?').all(photo.id) as { id: number }[];
-    for (const child of children) deleteAttachment(ctx, child.id);
-    let caption: string;
-    if (reading.kind === 'latex') {
-      const latex = reading.latex.trim();
-      // "hw page.jpg" → "hw page.tex"
-      const filename = `${photo.filename.replace(/\.[^.]*$/, '')}.tex`;
-      createAttachment(ctx, { sessionId: photo.sessionId, parentId: photo.id, filename, bytes: Buffer.from(TEX_TEMPLATE(latex)), extractedText: latex });
-      // ImageReading's latex variant has no caption (Task 1), so the photo says what it is.
-      caption = HANDWRITTEN;
-    } else {
-      caption = reading.caption;
-    }
-    updateAttachment(ctx, photo.id, { extractedText: caption }); // re-indexes the photo
-    hold(ctx, photo.id, 'done');
+    fileReading(ctx, photo, reading);
   } catch (err) {
     if (getAttachment(ctx, photo.id)) hold(ctx, photo.id, 'failed', whyFailed(err));
     throw err; // the job queue logs it
   } finally {
     rmSync(jpeg, { force: true });
   }
+}
+
+/**
+ * Files a reading of a photo or PDF: a LaTeX reading becomes its child `.tex` (`<name>.tex`, same
+ * session) and the upload says "Handwritten work"; a caption becomes the upload's text. A new
+ * reading replaces the earlier one; nothing else is ever derived from an upload.
+ */
+export function fileReading(ctx: AppContext, photo: Attachment, reading: ImageReading): void {
+  const children = ctx.db.prepare('SELECT id FROM attachments WHERE parent_id = ?').all(photo.id) as { id: number }[];
+  for (const child of children) deleteAttachment(ctx, child.id);
+  let caption: string;
+  if (reading.kind === 'latex') {
+    const latex = reading.latex.trim();
+    // "hw page.jpg" → "hw page.tex"
+    const filename = `${photo.filename.replace(/\.[^.]*$/, '')}.tex`;
+    createAttachment(ctx, { sessionId: photo.sessionId, parentId: photo.id, filename, bytes: Buffer.from(TEX_TEMPLATE(latex)), extractedText: latex });
+    // ImageReading's latex variant has no caption (Task 1), so the photo says what it is.
+    caption = HANDWRITTEN;
+  } else {
+    caption = reading.caption;
+  }
+  updateAttachment(ctx, photo.id, { extractedText: caption }); // re-indexes the photo
+  hold(ctx, photo.id, 'done');
+}
+
+/**
+ * A reading given by hand, for when Claude can't read the page (or read it wrong): filed exactly as
+ * Claude's would be. Null when there's no such photo or PDF; false when the LaTeX is empty.
+ */
+export function setReading(ctx: AppContext, attachmentId: number, latex: string): Attachment | null | false {
+  const photo = getAttachment(ctx, attachmentId);
+  if (!photo || !readable(photo.kind) || photo.parentId !== null) return null;
+  if (latex.trim() === '') return false;
+  fileReading(ctx, photo, { kind: 'latex', latex });
+  return getAttachment(ctx, attachmentId);
 }
 
 /**
