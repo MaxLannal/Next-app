@@ -12,6 +12,7 @@ import { SleepPanel } from './sleep/SleepPanel.tsx';
 import { FocusPanel } from './focus/FocusPanel.tsx';
 import { GoalsPanel } from './goals/GoalsPanel.tsx';
 import { SkillTrackerPanel } from './skills/SkillTrackerPanel.tsx';
+import { DEFAULT_WALLPAPER, useWallpaper } from '../../lib/useWallpaper.ts';
 
 /** Grid areas: goals and focus sit on the painting, the rest on slate below it. */
 type SlotId = 'goals' | 'focus' | 'skills' | 'heatmap' | 'sleep' | 'exercise' | 'calendar' | 'resources' | 'media';
@@ -26,11 +27,23 @@ const PHOTO_SOURCE = 'https://commons.wikimedia.org/wiki/File:Vallee-brouillard.
  */
 export function Dashboard() {
   reserveForTimer();
+  // The wallpaper chosen in Settings, else the fog photograph (which alone needs its credit).
+  const wallpaper = useWallpaper();
   return (
     <>
       <section className="hero" data-hero aria-label="Today">
         <div className="hero__ground" aria-hidden="true">
-          <img className="photo hero__photo" src="/photos/fog.jpg" width={1920} height={1254} alt="" fetchPriority="high" />
+          <img
+            className="photo hero__photo"
+            src={wallpaper ?? DEFAULT_WALLPAPER}
+            width={1920}
+            height={1254}
+            alt=""
+            fetchPriority="high"
+            onError={(e) => {
+              if (!e.currentTarget.src.endsWith(DEFAULT_WALLPAPER)) e.currentTarget.src = DEFAULT_WALLPAPER;
+            }}
+          />
           <div className="hero__scrim" />
         </div>
         <div className="container hero__grid">
@@ -74,13 +87,15 @@ export function Dashboard() {
       </div>
 
       <footer className="container foot">
-        <p className="foot__credits">
-          Photograph:{' '}
-          <a href={PHOTO_SOURCE} target="_blank" rel="noreferrer">
-            Thomas Bresson
-          </a>{' '}
-          (CC BY 3.0), Wikimedia Commons
-        </p>
+        {wallpaper === null && (
+          <p className="foot__credits">
+            Photograph:{' '}
+            <a href={PHOTO_SOURCE} target="_blank" rel="noreferrer">
+              Thomas Bresson
+            </a>{' '}
+            (CC BY 3.0), Wikimedia Commons
+          </p>
+        )}
       </footer>
     </>
   );

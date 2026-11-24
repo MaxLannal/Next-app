@@ -11,6 +11,8 @@ export type HubConfig = {
   github: { repo: string | null };
   /** The Mapbox access token the Traces globe draws its tiles with. */
   mapbox: { token: string | null };
+  /** The dashboard's wallpaper, a file in `files/wallpaper/`; null for the fog photograph. */
+  wallpaper: { file: string | null };
   keepAwake: boolean;
   sleepTargetHours: number;
 };
@@ -44,6 +46,7 @@ function defaults(): HubConfig {
     anthropic: { baseURL: null, authToken: null, model: 'claude-opus-5-5' },
     github: { repo: null },
     mapbox: { token: null },
+    wallpaper: { file: null },
     keepAwake: false,
     sleepTargetHours: 8,
   };

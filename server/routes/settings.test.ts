@@ -147,3 +147,31 @@ it('backup makes a dated copy and reports it', async () => {
   const after = await get();
   expect(after.body.lastBackupAt).toBe('2026-11-22');
 });
+
+it('sets a wallpaper from a photo, replaces it, and goes back to the fog', async () => {
+  const wallpaper = async () => ((await (await t.req('GET', '/api/settings/wallpaper')).json()) as { url: string | null }).url;
+  expect(await wallpaper()).toBeNull();
+
+  const put = async (name: string) => {
+    const form = new FormData();
+    form.append('file', new File(['image bytes'], name));
+    return t.req('PUT', '/api/settings/wallpaper', form);
+  };
+  const first = await put('forest.png');
+  expect(first.status).toBe(200);
+  const url = ((await first.json()) as { url: string }).url;
+  expect(await wallpaper()).toBe(url);
+  // Stored as a JPEG, through the Mac, at most 3840 px on its longest side.
+  expect(t.fakes.mac.calls.convertImage.at(-1)?.[2]).toBe(3840);
+  const image = await t.req('GET', url);
+  expect(image.headers.get('content-type')).toBe('image/jpeg');
+
+  const second = ((await (await put('IMG_0001.HEIC')).json()) as { url: string }).url;
+  expect(second).not.toBe(url);
+  expect(readdirSync(`${t.paths.filesDir}/wallpaper`)).toHaveLength(1);
+
+  expect((await put('notes.txt')).status).toBe(400);
+  expect((await t.req('DELETE', '/api/settings/wallpaper')).status).toBe(200);
+  expect(await wallpaper()).toBeNull();
+  expect(readdirSync(`${t.paths.filesDir}/wallpaper`)).toHaveLength(0);
+});

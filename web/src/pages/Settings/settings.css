@@ -70,7 +70,16 @@
 .import__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); margin-top: var(--space-sm); }
 .import label.btn { cursor: pointer; }
 
+/* Wallpaper: what's behind the dashboard now, beside the way to change it. */
+.wallpaper { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--space-lg); align-items: center; }
+.wallpaper__preview { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: var(--radius-inner); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-light) 10%, transparent), 0 10px 24px -14px oklch(5% 0.02 268 / 0.9); background: var(--color-paper-2); }
+.wallpaper__side { display: grid; gap: var(--space-sm); }
+.wallpaper__acts { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.wallpaper__acts .btn { cursor: pointer; }
+.wallpaper__acts .is-busy { opacity: 0.7; cursor: progress; }
+
 @media (max-width: 40rem) {
+  .wallpaper { grid-template-columns: minmax(0, 1fr); }
   .fact { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); }
   .copy-field__row { border-radius: var(--radius-inner); padding: var(--space-sm); padding-left: var(--space-md); }
   .switch-row { align-items: start; }

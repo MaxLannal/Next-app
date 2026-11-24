@@ -5,6 +5,7 @@ import { GitHubSetup } from './GitHubSetup.tsx';
 import { Permissions } from './Permissions.tsx';
 import { PhoneAccess } from './PhoneAccess.tsx';
 import { SleepSetup } from './SleepSetup.tsx';
+import { Wallpaper } from './Wallpaper.tsx';
 import { messageOf, settingsQuery, useSettings } from './useSettings.ts';
 import './settings.css';
 
@@ -39,6 +40,7 @@ export function SettingsPage() {
       ) : (
         <div className="settings__sections">
           <PhoneAccess settings={query.data} onSave={save} />
+          <Wallpaper />
           <SleepSetup settings={query.data} />
           <GitHubSetup github={query.data.github} />
           <Permissions settings={query.data} />
