@@ -108,7 +108,12 @@ export function createMacBridge(
 
     // ── Images ────────────────────────────────────────────────────────────
     async convertImage(src, dest, maxPixels) {
-      const out = await run('sips', ['-s', 'format', 'jpeg', '-Z', String(maxPixels), src, '--out', dest], {
+      // sips -Z enlarges as well as shrinks, so the size is read first and only a bigger image is resized.
+      const probe = await run('sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', src], { timeoutMs: 20_000 });
+      if (probe.code === NOT_FOUND) throw new UnavailableError('sips is not available on this machine');
+      const sides = [...probe.stdout.matchAll(/pixel(?:Width|Height):\s*(\d+)/g)].map((m) => Number(m[1]));
+      const fits = sides.length === 2 && Math.max(...sides) <= maxPixels;
+      const out = await run('sips', ['-s', 'format', 'jpeg', ...(fits ? [] : ['-Z', String(maxPixels)]), src, '--out', dest], {
         timeoutMs: 60_000,
       });
       if (out.code === NOT_FOUND) throw new UnavailableError('sips is not available on this machine');

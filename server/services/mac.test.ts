@@ -162,7 +162,19 @@ describe('images', () => {
 
     await bridge(run).convertImage(src, dest, 2000);
 
-    expect(calls).toEqual([{ cmd: 'sips', args: ['-s', 'format', 'jpeg', '-Z', '2000', src, '--out', dest] }]);
+    // Its size is read first; not knowing it, or over the limit, it is resized as it converts.
+    expect(calls).toEqual([
+      { cmd: 'sips', args: ['-g', 'pixelWidth', '-g', 'pixelHeight', src] },
+      { cmd: 'sips', args: ['-s', 'format', 'jpeg', '-Z', '2000', src, '--out', dest] },
+    ]);
+  });
+
+  it('convertImage never enlarges an image already within the limit', async () => {
+    const { run, calls } = fakeRun({ other: ok(`/x/forest.jpg\n  pixelWidth: 1500\n  pixelHeight: 844\n`) });
+
+    await bridge(run).convertImage('forest.jpg', 'forest-out.jpg', 3840);
+
+    expect(calls.at(-1)).toEqual({ cmd: 'sips', args: ['-s', 'format', 'jpeg', 'forest.jpg', '--out', 'forest-out.jpg'] });
   });
 
   it('convertImage fails when sips fails', async () => {
