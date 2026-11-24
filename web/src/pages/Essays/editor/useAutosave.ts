@@ -205,6 +205,8 @@ export function useAutosave(
     } else if (result.status === 409) {
       clearTimer();
       pending.current = payload;
+      // Refused, not lost: the text stays on this device until it is saved or let go.
+      writeBackup(essayId, payload);
       // The hub's PUT answers the essay as `current`; the bar offers reload or keep mine.
       const read = opts.current.readConflict ?? (() => fetchEssay(essayId));
       conflictNow = result.current ?? (await read());
@@ -258,6 +260,7 @@ export function useAutosave(
     if (statusRef.current === 'conflict') {
       // Not sent over a version that changed elsewhere; keepMine (or reload) decides.
       held.current = getPayloadRef.current();
+      writeBackup(essayId, held.current);
       return;
     }
     timer.current = setTimeout(() => {

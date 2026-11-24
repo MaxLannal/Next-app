@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { FocusSession, Subject } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
 import { useNow } from '../../../lib/useNow.ts';
@@ -75,10 +75,19 @@ export type SessionInput = {
   goalId?: number | null;
 };
 
-/** Start, pause, resume and stop, each answered by the hub, with the list refreshed. */
+/**
+ * Everything that reads focus time, refreshed after a session starts, stops or is edited:
+ * the session lists, the Focus panel's pies, the Year of focus heatmap and its subject ring.
+ */
+export const FOCUS_DATA_KEYS = [['sessions'], ['stats'], ['heatmap'], ['subjects']] as const;
+export function refreshFocusData(queryClient: QueryClient): Promise<unknown> {
+  return Promise.all(FOCUS_DATA_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey: [...queryKey] })));
+}
+
+/** Start, pause, resume and stop, each answered by the hub, with everything that reads focus time refreshed. */
 export function useSessionActions() {
   const queryClient = useQueryClient();
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['sessions'] });
+  const refresh = () => refreshFocusData(queryClient);
 
   return {
     async start(input: SessionInput): Promise<FocusSession> {

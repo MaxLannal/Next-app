@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import type { FocusSession, SubjectSlice } from '@shared/types.ts';
 import { api, ApiError } from '../../../api.ts';
@@ -9,7 +9,7 @@ import { formatDuration } from '../../../lib/format.ts';
 import { SessionHistory } from './SessionHistory.tsx';
 import { StartForm } from './StartForm.tsx';
 import { Stopwatch } from './Stopwatch.tsx';
-import { useCurrentSession, useOpenGoals, useSessionActions, useSubjects } from './useSessions.ts';
+import { refreshFocusData, useCurrentSession, useOpenGoals, useSessionActions, useSubjects } from './useSessions.ts';
 import { WrapUpSheet } from './WrapUpSheet.tsx';
 import './focus.css';
 
@@ -48,6 +48,7 @@ export function FocusPanel() {
   const [sheet, setSheet] = useState<FocusSession | null>(null);
   const [range, setRange] = useState<Range>('day');
   const [version, setVersion] = useState(0);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [pour, setPour] = useState<Pour | null>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
@@ -112,7 +113,11 @@ export function FocusPanel() {
     }
   };
 
-  const changed = () => setVersion((v) => v + 1);
+  // An edit in the wrap-up sheet changes the list here and every count of focus time.
+  const changed = () => {
+    setVersion((v) => v + 1);
+    void refreshFocusData(queryClient);
+  };
   const slices = pie.data ?? [];
   const total = slices.reduce((sum, s) => sum + s.seconds, 0);
   const open = pour?.state === 'open';

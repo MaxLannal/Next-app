@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { FocusSession } from '@shared/types.ts';
 import { ApiError } from '../api.ts';
-import { useCurrentSession, useSessionActions } from '../pages/Dashboard/focus/useSessions.ts';
+import { refreshFocusData, useCurrentSession, useSessionActions } from '../pages/Dashboard/focus/useSessions.ts';
 import { WrapUpSheet } from '../pages/Dashboard/focus/WrapUpSheet.tsx';
 import { TimerPill } from './TimerPill.tsx';
 import './NavTimer.css';
@@ -41,9 +41,8 @@ export function NavTimer() {
 
   // Everything a saved file or an edit touches lives under these keys.
   const saved = () => {
-    void queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    void refreshFocusData(queryClient);
     void queryClient.invalidateQueries({ queryKey: ['attachments'] });
-    void queryClient.invalidateQueries({ queryKey: ['stats'] });
   };
 
   return (

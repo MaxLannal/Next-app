@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAutosave, type EssayPayload, type SavePayload, type SaveResult } from './useAutosave.ts';
+import { backupKey, useAutosave, type EssayPayload, type SavePayload, type SaveResult } from './useAutosave.ts';
 
 const ID = 7;
 const KEY = `hub:essay:${ID}:unsaved`;
@@ -122,9 +122,12 @@ describe('useAutosave', () => {
     await act(async () => vi.advanceTimersByTimeAsync(800));
     expect(result.current.status).toBe('conflict');
     expect(result.current.conflict?.updatedAt).toBe(current.updatedAt);
+    // Refused text is kept on the device, not only in memory.
+    expect(JSON.parse(localStorage.getItem(backupKey(ID)) ?? 'null')?.payload.title).toBe('Draft');
     await act(async () => {
       await result.current.keepMine();
     });
+    expect(localStorage.getItem(backupKey(ID))).toBeNull();
     const mine = sent(fetchMock);
     expect(mine.body.baseUpdatedAt).toBe('2026-11-22T18:05:00.000Z');
     expect(mine.body.title).toBe('Draft');

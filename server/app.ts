@@ -67,6 +67,12 @@ function webApp(distDir: string): MiddlewareHandler {
       root: distDir,
       rewriteRequestPath: (path) =>
         extname(path) === '' && !existsSync(join(distDir, path)) ? '/index.html' : path,
+      // The page and the service worker are checked with the hub every time, so a window never
+      // keeps running an old build; the hashed files they point to never change, so they keep.
+      onFound: (path, c) => {
+        if (path.endsWith('.html') || path.endsWith('/sw.js')) c.header('Cache-Control', 'no-cache');
+        else if (path.includes('/assets/')) c.header('Cache-Control', 'public, max-age=31536000, immutable');
+      },
     });
     return assets(c, next);
   };
