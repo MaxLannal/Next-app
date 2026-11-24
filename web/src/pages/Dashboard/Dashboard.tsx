@@ -31,21 +31,22 @@ export function Dashboard() {
   const wallpaper = useWallpaper();
   return (
     <>
+      {/* The wallpaper is a layer of its own, fixed behind the page: the panels scroll over it and it stays put. */}
+      <div className="backdrop" aria-hidden="true">
+        <img
+          className="photo backdrop__photo"
+          src={wallpaper ?? DEFAULT_WALLPAPER}
+          width={1920}
+          height={1254}
+          alt=""
+          fetchPriority="high"
+          onError={(e) => {
+            if (!e.currentTarget.src.endsWith(DEFAULT_WALLPAPER)) e.currentTarget.src = DEFAULT_WALLPAPER;
+          }}
+        />
+        <div className="backdrop__scrim" />
+      </div>
       <section className="hero" data-hero aria-label="Today">
-        <div className="hero__ground" aria-hidden="true">
-          <img
-            className="photo hero__photo"
-            src={wallpaper ?? DEFAULT_WALLPAPER}
-            width={1920}
-            height={1254}
-            alt=""
-            fetchPriority="high"
-            onError={(e) => {
-              if (!e.currentTarget.src.endsWith(DEFAULT_WALLPAPER)) e.currentTarget.src = DEFAULT_WALLPAPER;
-            }}
-          />
-          <div className="hero__scrim" />
-        </div>
         <div className="container hero__grid">
           <div id="hero-time" className="hero__time"><TimePanel /></div>
           <div id="hero-agenda" className="hero__agenda"><TodayAgenda /></div>
