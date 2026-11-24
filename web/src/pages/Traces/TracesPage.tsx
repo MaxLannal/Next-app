@@ -6,6 +6,7 @@ import { Link } from 'react-router';
 import type { EssaySummary, Trace, TracePhoto } from '@shared/types.ts';
 import { api, ApiError } from '../../api.ts';
 import { formatDayKey, localDay } from '../../lib/format.ts';
+import { cityKey, groupByCity, type City } from './cities.ts';
 import './traces.css';
 
 const TRACES_KEY = ['traces'];
@@ -93,18 +94,30 @@ function hidePinnedPlaceNames(map: mapboxgl.Map, cities: string[], own: Map<stri
   }
 }
 
-function fillPin(el: HTMLElement, t: { city: string; country: string; day: string | null; photos?: readonly TracePhoto[] }, selected: boolean) {
-  el.querySelector('.trace-pin__city')!.textContent = t.city || placeOf(t);
-  el.querySelector('.trace-pin__date')!.textContent = whenOf(t);
-  fillAlbum(el, t.photos ?? []);
-  el.setAttribute('aria-label', [placeOf(t), whenOf(t)].filter(Boolean).join(', '));
+/** What a pin says: its name and when, the line read aloud, and the photos for its album. */
+type PinText = { name: string; when: string; label: string; photos?: readonly TracePhoto[] };
+
+function fillPin(el: HTMLElement, pin: PinText, selected: boolean) {
+  el.querySelector('.trace-pin__city')!.textContent = pin.name;
+  el.querySelector('.trace-pin__date')!.textContent = pin.when;
+  fillAlbum(el, pin.photos ?? []);
+  el.setAttribute('aria-label', pin.label);
   el.classList.toggle('is-selected', selected);
 }
 
+/** A city's one pin: its name, the span of its experiences, and every photo taken there. */
+const cityPin = (c: City): PinText => ({
+  name: c.city || placeOf(c),
+  when: c.when,
+  label: [placeOf(c), c.when, c.traces.length > 1 ? `${c.traces.length} experiences` : ''].filter(Boolean).join(', '),
+  photos: c.photos,
+});
+
 /**
- * Traces: a globe of the places something happened. Each pin carries the city, the country and
- * the day; the sidebar lists them as cards and opens one with its photos, what happened and the
- * essays written about it. Add, then tap the globe, pins a new one.
+ * Traces: a globe of the places something happened. Experiences in the same city share one pin,
+ * with the span of their days and an album of their photos; the sidebar lists the cities and opens
+ * one as an album of its experiences in the order they happened, each with its photos, what
+ * happened and the essays about it. Add, then tap the globe, pins a new one.
  */
 export function TracesPage() {
   const queryClient = useQueryClient();
@@ -112,11 +125,11 @@ export function TracesPage() {
   const token = useQuery({ queryKey: ['traces', 'map'], queryFn: ({ signal }) => api<{ token: string | null }>('/api/traces/map', { signal }) });
   const list = useQuery({ queryKey: TRACES_KEY, queryFn: ({ signal }) => api<Trace[]>('/api/traces', { signal }) });
   const [mode, setMode] = useState<Mode>('browse');
-  const [selected, setSelected] = useState<number | null>(null);
+  const [openCity, setOpenCity] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<number | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const essays = useQuery({
     queryKey: ['essays'],
@@ -127,15 +140,16 @@ export function TracesPage() {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const pins = useRef(new Map<number, mapboxgl.Marker>());
+  const pins = useRef(new Map<string, mapboxgl.Marker>());
   /** The map's place-name layers' own filters, kept so pinned cities can be taken out and put back. */
   const placeFilters = useRef(new Map<string, mapboxgl.FilterSpecification | null>());
   const draftPin = useRef<mapboxgl.Marker | null>(null);
   // The map's handlers read these, not the render they were made in.
-  const live = useRef({ mode, selected, place: (_lng: number, _lat: number) => {}, select: (_id: number) => {} });
+  const live = useRef({ mode, openCity, place: (_lng: number, _lat: number) => {}, open: (_key: string) => {} });
 
   const traces = list.data ?? [];
-  const current = traces.find((t) => t.id === selected) ?? null;
+  const cities = groupByCity(traces);
+  const current = cities.find((c) => c.key === openCity) ?? null;
   const mapToken = token.data?.token ?? null;
 
   const flyTo = (lng: number, lat: number) => {
@@ -144,18 +158,18 @@ export function TracesPage() {
     map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 4.2), duration: 1600, essential: true, padding: { left: window.innerWidth > 700 ? SIDE_PAD : 0, top: 0, right: 0, bottom: 0 } });
   };
 
-  const select = (id: number | null) => {
-    setSelected(id);
-    setConfirming(false);
+  const open = (key: string | null) => {
+    setOpenCity(key);
+    setConfirming(null);
     setMode('browse');
-    const t = traces.find((x) => x.id === id);
-    if (t) flyTo(t.lng, t.lat);
+    const c = cities.find((x) => x.key === key);
+    if (c) flyTo(c.lng, c.lat);
   };
 
   const place = (lng: number, lat: number) => {
     setDraft({ id: null, lng, lat, city: '', country: '', day: localDay(new Date().toISOString()), notes: '', essayIds: [], files: [] });
     setMode('form');
-    setSelected(null);
+    setOpenCity(null);
     flyTo(lng, lat);
     if (mapToken) {
       void placeAt(mapToken, lng, lat).then(({ city, country }) =>
@@ -164,7 +178,7 @@ export function TracesPage() {
     }
   };
 
-  live.current = { mode, selected, place, select: (id) => select(id) };
+  live.current = { mode, openCity, place, open: (key) => open(key) };
 
   // The globe: dark land under a dusk sky, turning slowly while nothing else is going on.
   useEffect(() => {
@@ -190,7 +204,7 @@ export function TracesPage() {
     });
     let holding = false;
     const spin = () => {
-      if (holding || live.current.mode !== 'browse' || live.current.selected !== null || map.getZoom() > 3) return;
+      if (holding || live.current.mode !== 'browse' || live.current.openCity !== null || map.getZoom() > 3) return;
       const centre = map.getCenter();
       centre.lng -= 2.4;
       map.easeTo({ center: centre, duration: 1000, easing: (n) => n });
@@ -222,31 +236,31 @@ export function TracesPage() {
     };
   }, [mapToken]);
 
-  // One pin per trace, kept in step with the list.
+  // One pin per city, kept in step with the list.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const seen = new Set<number>();
-    for (const t of traces) {
-      seen.add(t.id);
-      const existing = pins.current.get(t.id);
+    const seen = new Set<string>();
+    for (const c of groupByCity(traces)) {
+      seen.add(c.key);
+      const existing = pins.current.get(c.key);
       if (existing) {
-        existing.setLngLat([t.lng, t.lat]);
-        fillPin(existing.getElement(), t, t.id === selected);
+        existing.setLngLat([c.lng, c.lat]);
+        fillPin(existing.getElement(), cityPin(c), c.key === openCity);
         continue;
       }
       const el = pinElement();
-      fillPin(el, t, t.id === selected);
+      fillPin(el, cityPin(c), c.key === openCity);
       el.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        live.current.select(t.id);
+        live.current.open(c.key);
       });
-      pins.current.set(t.id, new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([t.lng, t.lat]).addTo(map));
+      pins.current.set(c.key, new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([c.lng, c.lat]).addTo(map));
     }
-    for (const [id, marker] of pins.current) {
-      if (!seen.has(id)) {
+    for (const [key, marker] of pins.current) {
+      if (!seen.has(key)) {
         marker.remove();
-        pins.current.delete(id);
+        pins.current.delete(key);
       }
     }
 
@@ -255,7 +269,7 @@ export function TracesPage() {
     const hide = () => hidePinnedPlaceNames(map, cities, placeFilters.current);
     if (map.isStyleLoaded()) hide();
     else map.once('style.load', hide);
-  }, [traces, selected, mapReady]);
+  }, [traces, openCity, mapReady]);
 
   // The new pin, where the globe was tapped, until it is saved or dropped.
   useEffect(() => {
@@ -265,7 +279,7 @@ export function TracesPage() {
     if (!map || draft === null || draft.id !== null) return;
     const el = pinElement();
     el.classList.add('is-draft');
-    fillPin(el, { city: draft.city || 'New trace', country: draft.country, day: draft.day || null }, true);
+    fillPin(el, { name: draft.city || 'New trace', when: draft.day ? formatDayKey(draft.day) : '', label: 'New trace' }, true);
     draftPin.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([draft.lng, draft.lat]).addTo(map);
   }, [draft, mapReady]);
 
@@ -288,13 +302,22 @@ export function TracesPage() {
 
   const startAdding = () => {
     setError(null);
-    setSelected(null);
+    setOpenCity(null);
     setDraft(null);
     setMode((m) => (m === 'placing' ? 'browse' : 'placing'));
   };
 
   const edit = (t: Trace) => {
     setDraft({ id: t.id, lng: t.lng, lat: t.lat, city: t.city, country: t.country, day: t.day ?? '', notes: t.notes, essayIds: t.essays.map((e) => e.id), files: [] });
+    setMode('form');
+  };
+
+  /** Another experience in a city already pinned: its place filled in, no tap on the globe needed. */
+  const addHere = (c: City) => {
+    const at = c.traces[c.traces.length - 1]!;
+    setError(null);
+    setConfirming(null);
+    setDraft({ id: null, lng: at.lng, lat: at.lat, city: c.city, country: c.country, day: localDay(new Date().toISOString()), notes: '', essayIds: [], files: [] });
     setMode('form');
   };
 
@@ -320,7 +343,7 @@ export function TracesPage() {
       void queryClient.invalidateQueries({ queryKey: TRACES_KEY });
       setDraft(null);
       setMode('browse');
-      setSelected(saved.id);
+      setOpenCity(cityKey(saved));
     } catch (err) {
       setError(messageOf(err, 'Couldn’t save that trace — retry'));
     } finally {
@@ -332,8 +355,7 @@ export function TracesPage() {
     try {
       await api(`/api/traces/${t.id}`, { method: 'DELETE' });
       queryClient.setQueryData<Trace[]>(TRACES_KEY, (rows) => (rows ?? []).filter((r) => r.id !== t.id));
-      setSelected(null);
-      setConfirming(false);
+      setConfirming(null);
     } catch (err) {
       setError(messageOf(err, 'Couldn’t delete that trace — retry'));
     }
@@ -471,87 +493,105 @@ export function TracesPage() {
             </div>
           </form>
         ) : current !== null ? (
-          <article className="trace-detail">
-            <button className="traces__back" type="button" onClick={() => select(null)}>
+          <article className="trace-detail" aria-label={`${current.city || placeOf(current)}, album`}>
+            <button className="traces__back" type="button" onClick={() => open(null)}>
               ‹ All traces
             </button>
             <h2 className="traces__title">{current.city || placeOf(current)}</h2>
-            <p className="trace-detail__meta">{[current.city ? current.country : '', whenOf(current)].filter(Boolean).join(' · ')}</p>
-            {current.photos.length > 0 && (
-              <div className="trace-detail__photos">
-                {current.photos.map((p) => (
-                  <button key={p.id} className="trace-detail__photo" type="button" aria-label="See this photo" onClick={() => setViewing(p.url)}>
-                    <img src={p.url} alt="" loading="lazy" />
-                  </button>
-                ))}
-              </div>
-            )}
-            {current.notes !== '' && <p className="trace-detail__notes">{current.notes}</p>}
-            {current.essays.length > 0 && (
-              <section className="trace-detail__essays" aria-label="Essays about it">
-                <h3 className="trace-form__label">Essays about it</h3>
-                {current.essays.map((e) => (
-                  <Link key={e.id} className="trace-detail__essay" to={`/essays/${e.id}`}>
-                    {e.title || 'Untitled'}
-                  </Link>
-                ))}
-              </section>
-            )}
-            <div className="trace-form__acts">
-              {confirming ? (
-                <>
-                  <span className="traces__quiet">Delete this trace?</span>
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => void remove(current)}>
-                    Yes, delete
-                  </button>
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => setConfirming(false)}>
-                    Keep
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => setConfirming(true)}>
-                    Delete
-                  </button>
-                  <button className="btn btn-sm" type="button" onClick={() => edit(current)}>
-                    Edit
-                  </button>
-                </>
-              )}
-            </div>
+            <p className="trace-detail__meta">
+              {[current.city ? current.country : '', current.when, current.traces.length > 1 ? `${current.traces.length} experiences` : ''].filter(Boolean).join(' · ')}
+            </p>
+            {/* The city's experiences in the order they happened. */}
+            <ol className="trace-visits">
+              {current.traces.map((t) => (
+                <li key={t.id} className="trace-visit">
+                  <h3 className="trace-visit__date num">{whenOf(t) || 'Undated'}</h3>
+                  {t.photos.length > 0 && (
+                    <div className="trace-detail__photos">
+                      {t.photos.map((p) => (
+                        <button key={p.id} className="trace-detail__photo" type="button" aria-label="See this photo" onClick={() => setViewing(p.url)}>
+                          <img src={p.url} alt="" loading="lazy" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {t.notes !== '' && <p className="trace-detail__notes">{t.notes}</p>}
+                  {t.essays.length > 0 && (
+                    <section className="trace-detail__essays" aria-label="Essays about it">
+                      <h4 className="trace-form__label">Essays about it</h4>
+                      {t.essays.map((e) => (
+                        <Link key={e.id} className="trace-detail__essay" to={`/essays/${e.id}`}>
+                          {e.title || 'Untitled'}
+                        </Link>
+                      ))}
+                    </section>
+                  )}
+                  <div className="trace-visit__acts">
+                    {confirming === t.id ? (
+                      <>
+                        <span className="traces__quiet">Delete this experience?</span>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => void remove(t)}>
+                          Yes, delete
+                        </button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => setConfirming(null)}>
+                          Keep
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => setConfirming(t.id)}>
+                          Delete
+                        </button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => edit(t)}>
+                          Edit
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <button className="btn btn-sm trace-visit__add" type="button" onClick={() => addHere(current)}>
+              + Add an experience here
+            </button>
           </article>
         ) : (
           <>
             <header className="traces__head">
               <h1 className="traces__title">Traces</h1>
               <span className="traces__count num">
-                {traces.length} {traces.length === 1 ? 'place' : 'places'} · {countries} {countries === 1 ? 'country' : 'countries'}
+                {cities.length} {cities.length === 1 ? 'place' : 'places'} · {countries} {countries === 1 ? 'country' : 'countries'}
               </span>
             </header>
             {list.isSuccess && traces.length === 0 ? (
               <p className="traces__quiet">No traces yet. Press Add, then tap the globe where something happened.</p>
             ) : (
               <ul className="trace-cards">
-                {traces.map((t) => (
-                  <li key={t.id}>
-                    <button className="trace-card" type="button" onClick={() => select(t.id)}>
-                      <span className="trace-card__cover">
-                        {t.photos[0] !== undefined ? <img src={t.photos[0].url} alt="" loading="lazy" /> : <span aria-hidden="true">{(t.city || t.country || '·').slice(0, 1)}</span>}
-                      </span>
-                      <span className="trace-card__text">
-                        <span className="trace-card__city">{t.city || placeOf(t)}</span>
-                        <span className="trace-card__meta">{[t.city ? t.country : '', whenOf(t)].filter(Boolean).join(' · ')}</span>
-                        {(t.photos.length > 0 || t.essays.length > 0) && (
+                {cities.map((c) => {
+                  const essays = c.traces.reduce((n, t) => n + t.essays.length, 0);
+                  return (
+                    <li key={c.key}>
+                      <button className="trace-card" type="button" onClick={() => open(c.key)}>
+                        <span className="trace-card__cover">
+                          {c.photos[0] !== undefined ? <img src={c.photos[0].url} alt="" loading="lazy" /> : <span aria-hidden="true">{(c.city || c.country || '·').slice(0, 1)}</span>}
+                        </span>
+                        <span className="trace-card__text">
+                          <span className="trace-card__city">{c.city || placeOf(c)}</span>
+                          <span className="trace-card__meta">{[c.city ? c.country : '', c.when].filter(Boolean).join(' · ')}</span>
                           <span className="trace-card__counts">
-                            {[t.photos.length > 0 ? `${t.photos.length} ${t.photos.length === 1 ? 'photo' : 'photos'}` : '', t.essays.length > 0 ? `${t.essays.length} ${t.essays.length === 1 ? 'essay' : 'essays'}` : '']
+                            {[
+                              c.traces.length > 1 ? `${c.traces.length} experiences` : '',
+                              c.photos.length > 0 ? `${c.photos.length} ${c.photos.length === 1 ? 'photo' : 'photos'}` : '',
+                              essays > 0 ? `${essays} ${essays === 1 ? 'essay' : 'essays'}` : '',
+                            ]
                               .filter(Boolean)
                               .join(' · ')}
                           </span>
-                        )}
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </>
