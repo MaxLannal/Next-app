@@ -45,8 +45,8 @@ type Day = { date: Date; blocks: PlacedBlock[]; focus: number; events: number };
 type Pick = { index: number; block: PlacedBlock | null };
 
 /**
- * The week or the month in review: each day is one thin bar, its timeline squeezed down
- * (midnight at the top, midnight at the foot), side by side. Focus fills its stretch in the
+ * The week or the month in review: each day is a bar, its timeline squeezed down
+ * (midnight at the top, midnight at the foot), side by side nearly edge to edge. Focus fills its stretch in the
  * subject's colour; an event fills its own in its calendar's, a step quieter. Hover or arrow
  * through the days to read one; the legend totals the range by subject and calendar.
  */
@@ -245,9 +245,8 @@ function Readout({ days, pick, view }: { days: Day[]; pick: Pick | null; view: V
     return (
       <p className="rv__readout num" aria-live="polite">
         <span className="rv__headline">{totalsLine(focus, events) || `Nothing logged this ${view}`}</span>
-        <span className="rv__dim">
-          {focus > 0 ? ` · focused on ${active} of ${days.length} days` : ''} · pick a day to read it
-        </span>
+        {focus > 0 && <span className="rv__dim"> · focused on {active} of {days.length} days</span>}
+        <span className="rv__hint"> · pick a day to read it</span>
       </p>
     );
   }

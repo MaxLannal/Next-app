@@ -131,7 +131,7 @@ describe('ReviewPanel', () => {
     expect(screen.getByText('Mathematics 2 h 0 m')).toBeTruthy();
   });
 
-  it('shows the month as a thin bar for every day, and steps back a month', async () => {
+  it('shows the month as a bar for every day, and steps back a month', async () => {
     const user = userEvent.setup();
     renderPanel();
 
