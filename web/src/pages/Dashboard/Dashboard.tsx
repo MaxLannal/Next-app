@@ -17,7 +17,6 @@ import {
 import { useCurrentSession } from './focus/useSessions.ts';
 import { ResourcesPanel } from './resources/ResourcesPanel.tsx';
 import { CalendarPanel } from './calendar/CalendarPanel.tsx';
-import { TodayAgenda } from './calendar/TodayAgenda.tsx';
 import { TimePanel } from './time/TimePanel.tsx';
 import { ExercisePanel } from './exercise/ExercisePanel.tsx';
 import { NowPlayingPanel } from './media/NowPlayingPanel.tsx';
@@ -26,6 +25,8 @@ import { SleepPanel } from './sleep/SleepPanel.tsx';
 import { FocusPanel } from './focus/FocusPanel.tsx';
 import { GoalsPanel } from './goals/GoalsPanel.tsx';
 import { SkillTrackerPanel } from './skills/SkillTrackerPanel.tsx';
+import { ReviewPanel } from './review/ReviewPanel.tsx';
+import { DayTimeline } from './timeline/DayTimeline.tsx';
 import { DEFAULT_WALLPAPER, useWallpaper } from '../../lib/useWallpaper.ts';
 import { EditBar, PageHead, SlotTools } from './EditLayout.tsx';
 import { useArrange } from './useArrange.ts';
@@ -43,7 +44,7 @@ const PANELS: Record<PanelId, () => ReactNode> = {
   ),
   agenda: () => (
     <div className="hero__agenda">
-      <TodayAgenda />
+      <DayTimeline />
     </div>
   ),
   goals: () => <GoalsPanel />,
@@ -55,6 +56,7 @@ const PANELS: Record<PanelId, () => ReactNode> = {
   calendar: () => <CalendarPanel />,
   resources: () => <ResourcesPanel />,
   media: () => <NowPlayingPanel />,
+  review: () => <ReviewPanel />,
 };
 
 /** Top to bottom, then left to right: the order a page reads in, and its panels stack in on a phone. */

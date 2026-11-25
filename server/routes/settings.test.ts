@@ -202,7 +202,7 @@ it('keeps the dashboard layout arranged by hand, made safe to draw, and puts the
   expect(first.pages.map((p) => p.name)).toEqual(['Today', 'Progress', 'Plans']);
 
   const sent = {
-    version: 3,
+    version: 4,
     pages: [
       { name: '  Mornings ', panels: [{ id: 'sleep', x: 2, y: 3, w: 10, h: 20 }, { id: 'nope', x: 0, y: 0, w: 4, h: 4 }] },
       { name: '', panels: [{ id: 'sleep', x: 0, y: 0, w: 4, h: 4 }, { id: 'time', x: 20, y: 40, w: 99, h: 1 }] },
@@ -210,7 +210,7 @@ it('keeps the dashboard layout arranged by hand, made safe to draw, and puts the
   };
   const saved = await layoutOf(await t.req('PUT', '/api/settings/layout', { layout: sent }));
   expect(saved).toEqual({
-    version: 3,
+    version: 4,
     pages: [
       { name: 'Mornings', panels: [{ id: 'sleep', x: 2, y: 3, w: 10, h: 20 }] },
       { name: 'Page 2', panels: [{ id: 'time', x: 0, y: 40, w: 48, h: 6 }] },
@@ -219,8 +219,15 @@ it('keeps the dashboard layout arranged by hand, made safe to draw, and puts the
   expect(await layoutOf(await t.req('GET', '/api/settings/layout'))).toEqual(saved);
 
   // Fewer pages than before: the whole list is replaced, not merged into the old one.
-  const one = await layoutOf(await t.req('PUT', '/api/settings/layout', { layout: { version: 3, pages: [{ name: 'Only', panels: [] }] } }));
+  const one = await layoutOf(await t.req('PUT', '/api/settings/layout', { layout: { version: 4, pages: [{ name: 'Only', panels: [] }] } }));
   expect(one.pages).toEqual([{ name: 'Only', panels: [] }]);
+
+  // One kept from before the review panel comes back with it, on its second page.
+  const older = await layoutOf(
+    await t.req('PUT', '/api/settings/layout', { layout: { version: 3, pages: [{ name: 'A', panels: [] }, { name: 'B', panels: [] }] } }),
+  );
+  expect(older.version).toBe(4);
+  expect(older.pages[1]!.panels.map((p) => p.id)).toEqual(['review']);
 
   const reset = await layoutOf(await t.req('PUT', '/api/settings/layout', { layout: null }));
   expect(reset.pages.map((p) => p.name)).toEqual(['Today', 'Progress', 'Plans']);

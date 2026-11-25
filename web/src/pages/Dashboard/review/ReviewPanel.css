@@ -1,0 +1,72 @@
+/* The week or month in review: one thin bar per day, each the day's timeline squeezed down,
+   side by side on hairline hours. Focus is filled in its subject's colour; an event in its
+   calendar's, mixed halfway into the glass so it reads a step quieter. A 2px gap of glass
+   separates touching segments. */
+
+.rv { --plot-h: 15rem; --label-h: 26px; --bar-w: 10px; --glass-ground: #12161e; }
+/* The head carries the readout, the range and its steps, and the tabs, wrapping as the width needs. */
+.rv .panel__head { flex-wrap: wrap; row-gap: var(--space-sm); }
+.rv .panel__actions { flex: 1 1 auto; min-width: 0; }
+.rv__actions { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px var(--space-sm); min-width: 0; }
+.rv__range { margin-left: var(--space-sm); font-size: var(--text-sm); color: var(--color-ink-2); white-space: nowrap; }
+.rv__step { width: 34px; min-height: 34px; padding: 0; }
+.rv__today { min-height: 34px; }
+.rv__actions .tabs { margin-left: var(--space-sm); }
+
+.rv__problem { margin-bottom: 12px; }
+.rv__trouble { margin-bottom: 8px; font-size: var(--text-sm); color: var(--color-muted); }
+.rv__retry { padding: 0; border: 0; background: none; color: var(--color-accent-hi); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+/* One line, left of the range: what the range, or the day under the pointer, holds. */
+.rv__readout { display: flex; flex: 1 1 12rem; align-items: center; gap: 4px 14px; min-width: 0; margin: 0 auto 0 var(--space-md); overflow: hidden; font-size: var(--text-sm); white-space: nowrap; }
+.rv__headline { flex: none; font-weight: 500; }
+.rv__dim { flex: none; margin-left: -10px; color: var(--color-muted); }
+.rv__piece { display: inline-flex; flex: none; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--color-ink-2); }
+
+.rv__chart { display: grid; grid-template-columns: 3.25rem minmax(0, 1fr); height: calc(var(--plot-h) + var(--label-h)); }
+.rv__chart.is-month { --bar-w: 6px; }
+.rv__axis { position: relative; height: calc(100% - var(--label-h)); }
+.rv__tick { position: absolute; right: 10px; transform: translateY(-50%); font-size: 0.75rem; line-height: 1; color: var(--color-muted); }
+.rv__plot { position: relative; min-width: 0; height: 100%; }
+.rv__grid { position: absolute; inset: 0 0 auto; height: calc(100% - var(--label-h)); pointer-events: none; }
+.rv__grid i { position: absolute; left: 0; right: 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 6%, transparent); }
+
+.rv__days { position: relative; display: grid; grid-template-columns: repeat(var(--days), minmax(0, 1fr)); height: 100%; }
+.rv__day { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; cursor: default; }
+.rv__day:hover, .rv__day:focus-visible { background: color-mix(in oklab, var(--color-light) 4%, transparent); }
+.rv__day:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.rv__track { position: relative; flex: 1 1 0; width: var(--bar-w); min-height: 0; border-radius: var(--bar-w); background: color-mix(in oklab, var(--color-light) 6%, transparent); }
+.rv__day.is-future .rv__track { background: color-mix(in oklab, var(--color-light) 2.5%, transparent); }
+.rv__seg { position: absolute; top: calc(var(--top) * 100% + 1px); left: calc(var(--lane) / var(--lanes) * 100%); width: calc(100% / var(--lanes) - (var(--lanes) - 1) * 1px); height: max(calc(var(--h) * 100% - 2px), 2px); border-radius: 2px; }
+.rv__seg.is-focus { background: var(--fill); }
+.rv__seg.is-event { background: color-mix(in oklab, var(--fill) 55%, var(--glass-ground)); }
+.rv__seg:hover { filter: brightness(1.2); }
+.rv__now { position: absolute; left: -3px; right: -3px; height: 2px; border-radius: 1px; background: var(--color-accent); transform: translateY(-50%); }
+
+.rv__label { flex: none; height: calc(var(--label-h) - 8px); font-size: 0.6875rem; line-height: 18px; color: var(--color-muted); white-space: nowrap; }
+.rv__day.is-today .rv__label { color: var(--color-accent-hi); font-weight: 600; }
+
+.rv__legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: var(--space-sm) 0 0; padding: var(--space-sm) 0 0; border-top: 1px solid color-mix(in oklab, var(--color-light) 7%, transparent); list-style: none; }
+.rv__key { display: inline-flex; align-items: center; gap: 7px; font-size: var(--text-xs); }
+.rv__key-time { color: var(--color-muted); }
+.rv__swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; background: var(--fill); }
+.rv__swatch.is-event { background: color-mix(in oklab, var(--fill) 55%, var(--glass-ground)); }
+
+.rv__note { margin-top: var(--space-sm); font-size: var(--text-xs); color: var(--color-muted); }
+
+/* On the dashboard's grid the chart takes the height its rectangle leaves, and the legend keeps to a line. */
+@media (min-width: 901px) {
+  .dash-canvas .rv .panel__head { padding-bottom: var(--space-sm); }
+  .dash-canvas .rv__chart { flex: 1 1 0; height: auto; min-height: 7.5rem; }
+  .dash-canvas .rv__legend { flex-wrap: nowrap; overflow: hidden; }
+  .dash-canvas .rv__key { flex: none; }
+  .dash-canvas .rv__note { margin-top: 4px; }
+}
+
+@media (max-width: 40rem) {
+  .rv { --plot-h: 12rem; --bar-w: 8px; }
+  .rv__chart { grid-template-columns: 2.75rem minmax(0, 1fr); }
+  .rv__chart.is-month { --bar-w: 4px; }
+  .rv__label.is-minor { visibility: hidden; }
+}

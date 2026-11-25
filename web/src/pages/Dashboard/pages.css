@@ -27,7 +27,7 @@
 .dash-canvas:has(> #media:not(.is-editing) > .slot__body:empty) > .slot[data-grows] { height: calc(var(--grown) * (100% + var(--gap)) / 48 - var(--gap)); }
 
 /* Every panel fills its rectangle; one with more than fits scrolls inside. */
-.dash-canvas .panel, .dash-canvas .agenda { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.dash-canvas .panel { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .dash-canvas .panel { padding-block: 18px; }
 .dash-canvas .panel__head { align-items: center; padding-bottom: var(--space-md); }
 .hero__agenda { display: grid; }
@@ -208,7 +208,7 @@
   .dash-canvas > .slot { position: static; width: auto; height: auto; container-type: normal; transition: none; }
   .slot--goals, .slot--focus { min-height: var(--hero-panel-h); }
   .slot--goals .panel, .slot--focus .panel { height: 100%; }
-  .dash-canvas .agenda { height: auto; }
+  .dash-canvas .tl { height: auto; }
   .slot__handle, .slot-ghost { display: none; }
   .dash-canvas > .slot.is-editing { cursor: default; }
 }

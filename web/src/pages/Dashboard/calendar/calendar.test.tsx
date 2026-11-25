@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarEvent } from '@shared/types.ts';
 import { CalendarPanel } from './CalendarPanel.tsx';
-import { TodayAgenda } from './TodayAgenda.tsx';
 
 // Dates show in the system time zone; pin it to the hub's for this file.
 beforeAll(() => {
@@ -69,48 +68,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('TodayAgenda', () => {
-  it("lists today's events, marks the next one and reads today's range", async () => {
-    serve(() => json({ events: [lecture, office, reading], source: 'eventkit' }));
-    renderWithQuery(<TodayAgenda />);
-
-    const rows = await screen.findAllByRole('listitem');
-    expect(rows.map((r) => r.textContent)).toEqual([
-      'All dayReading week',
-      '10:30STAT 251 lectureRyerson 251',
-      'Next15:00Office hours',
-    ]);
-    expect(rows[2]?.classList.contains('is-next')).toBe(true);
-    expect(requested[0]?.searchParams.get('from')).toBe('2026-11-22T06:00:00.000Z');
-    expect(requested[0]?.searchParams.get('to')).toBe('2026-11-23T06:00:00.000Z');
-  });
-
-  it('says when the day is empty', async () => {
-    serve(() => json({ events: [], source: 'eventkit' }));
-    renderWithQuery(<TodayAgenda />);
-
-    expect(await screen.findByText('Nothing on the calendar today')).toBeTruthy();
-  });
-
-  it('shows the fix when calendar access is refused', async () => {
-    serve(() => json({ error: 'Calendar access not granted', fix: 'Run npm run setup in Terminal on the Mac' }, 503));
-    renderWithQuery(<TodayAgenda />);
-
-    expect(await screen.findByText('Run npm run setup in Terminal on the Mac')).toBeTruthy();
-    expect(screen.getByText('Calendar access not granted')).toBeTruthy();
-  });
-});
-
 it('says when events come from the Calendar app', async () => {
   serve(() => json({ events: [office], source: 'calendar-app' }));
-  renderWithQuery(
-    <>
-      <TodayAgenda />
-      <CalendarPanel />
-    </>,
-  );
+  renderWithQuery(<CalendarPanel />);
 
-  await waitFor(() => expect(screen.getAllByText('From the Calendar app — repeating events may be missing')).toHaveLength(2));
+  expect(await screen.findByText('From the Calendar app — repeating events may be missing')).toBeTruthy();
 });
 
 describe('CalendarPanel', () => {
