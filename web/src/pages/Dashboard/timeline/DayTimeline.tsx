@@ -25,6 +25,8 @@ export const HOUR_PX = 48;
 /** Below this height a block carries no text, and below the next one a single line. */
 const BARE_PX = 16;
 const ONE_LINE_PX = 38;
+/** An hour label this close to now would sit under the now pill. */
+const NOW_CLEARANCE_MS = 15 * 60_000;
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
@@ -107,11 +109,16 @@ export function DayTimeline() {
       <div className="tl__window">
         <div className="tl__scroll" ref={scrollRef} onScroll={onScroll} tabIndex={0} role="region" aria-label="Today, hour by hour">
           <div className="tl__day" style={{ height: 24 * HOUR_PX }}>
-            {HOURS.map((h) => (
-              <div key={h} className="tl__hour" style={{ top: `${dayFraction(addHours(today, h).getTime(), bounds) * 100}%` }} aria-hidden="true">
-                <span className="tl__hour-label num">{String(h).padStart(2, '0')}:00</span>
-              </div>
-            ))}
+            {HOURS.map((h) => {
+              const at = addHours(today, h).getTime();
+              // The now pill takes the gutter near its hour; that hour's label steps aside for it.
+              const underNow = Math.abs(at - now.getTime()) < NOW_CLEARANCE_MS;
+              return (
+                <div key={h} className="tl__hour" style={{ top: `${dayFraction(at, bounds) * 100}%` }} aria-hidden="true">
+                  {!underNow && <span className="tl__hour-label num">{String(h).padStart(2, '0')}:00</span>}
+                </div>
+              );
+            })}
             <ol className="tl__blocks">
               {placed.map((block) => (
                 <li key={block.key} className="tl__slot" style={placement(block, bounds)}>
