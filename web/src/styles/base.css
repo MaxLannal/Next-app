@@ -63,11 +63,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .backdrop__scrim { position: absolute; inset: 0; background: linear-gradient(to bottom, color-mix(in oklab, var(--color-paper) 0%, transparent) 55%, color-mix(in oklab, var(--color-paper) 45%, transparent) 100%); }
 /* Same two columns and gap as the panels below, so the agenda lines up with Focus and the time with Goals. */
 .hero__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); align-items: center; padding-top: calc(var(--nav-h) + var(--space-lg)); padding-bottom: var(--space-xl); }
-.hero__time { position: relative; color: var(--color-day-ink); }
-/* The fog behind the head: a radial scrim tied to the time itself, so it stays behind the
-   clock however tall the hero grows. Layered over the photograph, under the text. */
-.hero__time::before { content: ""; position: absolute; z-index: -1; inset: -150px -140px -150px -170px; pointer-events: none;
-  background: radial-gradient(closest-side, color-mix(in oklab, var(--color-fog) 78%, transparent), color-mix(in oklab, var(--color-fog) 42%, transparent) 55%, color-mix(in oklab, var(--color-fog) 0%, transparent) 100%); }
+.hero__time { position: relative; width: fit-content; max-width: 100%; color: var(--color-day-ink); }
+/* The fog behind the head: a small, soft glow held close around the time's own lines (the box is
+   only as wide as they are), just enough for the dark figures to read on the photograph. Layered
+   over the photograph, under the text. */
+.hero__time::before { content: ""; position: absolute; z-index: -1; inset: -14px -22px; border-radius: 48px; pointer-events: none;
+  background: color-mix(in oklab, var(--color-fog) 58%, transparent); filter: blur(26px); }
 /* Glass over the pale fog needs more smoke than glass over slate to keep muted text readable. */
 .hero__panels { --glass: oklch(20% 0.018 268 / 0.74); }
 /* Goals and Focus share one short height, so the painting shows above and below them; their lists scroll inside. */

@@ -26,7 +26,7 @@ export const HOUR_PX = 48;
 const BARE_PX = 16;
 const ONE_LINE_PX = 38;
 /** An hour label this close to now would sit under the now pill. */
-const NOW_CLEARANCE_MS = 15 * 60_000;
+const NOW_CLEARANCE_MS = 22 * 60_000;
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
